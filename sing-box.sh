@@ -1,4 +1,5 @@
 #!/bin/bash
+
 # Color definitions
 bold_red='\033[1;31m'
 bold_green='\033[1;32m'
@@ -8,6 +9,8 @@ bold_purple='\033[1;35m'
 bold_cyan='\033[1;36m'
 bold_white='\033[1;37m'
 reset='\033[0m'
+CYAN='\033[0;36m'
+RESET='\033[0m'
 
 # Formatting functions
 bold_italic_red() { echo -e "${bold_red}\033[3m$1${reset}"; }
@@ -21,6 +24,8 @@ yellow() {
     echo -e "\033[1;33m$1\033[0m"
 }
 
+
+    
 # Function to check if sing-box is installed
 check_singbox_installed() {
     if [ -e "$HOME/sbox/web" ]; then
@@ -132,31 +137,127 @@ read_nz_variables() {
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
   GREEN='\033[1;32m'
+  bold_italic_yellow="\033[1;3;33m"
+bold_italic_purple="\033[1;3;35m"
+RESET="\033[0m"
   
+#安装sing-box
 install_singbox() {
-    echo -e "${GREEN}\033[1m正在安装，请稍后......${NC}"
-    echo -e "${YELLOW}本脚本支持同时安装二种协议${purple}(vless-reality | hysteria2)${NC}"
-    echo -e "${YELLOW}开始运行前，请确保面板中${purple}已开放2个端口，一个用于TCP，一个用于UDP${NC}"
-    echo -e "${YELLOW}面板中${purple}Additional services中的Run your own applications${yellow}选项已开启为${purple}Enabled${yellow}状态${NC}"
+     echo -e "${bold_italic_yellow}本脚本可以选择性安装三种协议 ${bold_italic_purple}(vless-reality | hysteria2 | tuic )${RESET}"
+    echo -e "${bold_italic_yellow}开始运行前，请确保面板中 ${bold_italic_purple}已开放3个端口，一个TCP端口，两个UDP端口${RESET}"
+    echo -e "${bold_italic_yellow}面板中 ${bold_italic_purple}Additional services中的Run your own applications${bold_italic_yellow}选项已开启为 ${bold_italic_purple}Enabled${bold_italic_yellow} 状态${RESET}"
+
+    # 使用黄色粗体显示提示信息
+    echo -e "\033[1;33m\n确定继续安装吗?<ENTER默认安装>【y/n】: \033[0m"
+    read -p "" choice
+    choice=${choice:-y}  # Default to y
+
+    if [[ "$choice" != [Yy] ]]; then
+        echo -e "$(bold_italic_red "安装已取消")"
+        exit 0
+    fi
+
+    # Continue with the installation process
+    WORKDIR="$HOME/sbox"
+    mkdir -p "$WORKDIR"
+    cd "$WORKDIR"
+
+    # Set certificate and key paths
+    CERT_PATH="${HOME}/sbox/cert.pem"
+    PRIVATE_KEY_PATH="${HOME}/sbox/private.key"
+
+    # Display service options with numbers
+    echo -e "${GREEN}\033[1m\033[3m请选择需要安装的服务（请输入对应的序号）：${RESET}"
+  echo -e "${bold_italic_yellow}1: vless-reality${RESET}"
+echo -e "${bold_italic_yellow}2: hysteria2${RESET}"
+echo -e "${bold_italic_yellow}3: tuic${RESET}"
+echo -e "${bold_italic_yellow}4: 全部安装${RESET}"
+read -p "$(echo -e ${bold_italic_yellow}请输入你的选择${RESET}): " choices
+
+
+    # Initialize installation variables
+    INSTALL_VLESS="false"
+    INSTALL_HYSTERIA2="false"
+    INSTALL_TUIC="false"
+
+    # Process user input
+    for choice in $choices; do
+        case "$choice" in
+            1) INSTALL_VLESS="true" ;;
+            2) INSTALL_HYSTERIA2="true" ;;
+            3) INSTALL_TUIC="true" ;;
+            4) INSTALL_VLESS="true"; INSTALL_HYSTERIA2="true"; INSTALL_TUIC="true" ;;
+            *) echo -e "$(bold_italic_red "无效的选择: $choice")" ;;
+        esac
+    done
+
+    # Read port numbers for selected services
+   if [ "$INSTALL_VLESS" = "true" ]; then
+     read -p "$(echo -e "${RED}\033[1m\033[3m请输入vless-reality端口 (面板开放的tcp端口): ${RESET}")" vless_port
+fi
+
+if [ "$INSTALL_HYSTERIA2" = "true" ]; then
+read -p "$(echo -e "${RED}\033[1m\033[3m请输入hysteria2端口 (面板开放的udp端口): ${RESET}")" hy2_port
+fi
+
+if [ "$INSTALL_TUIC" = "true" ]; then
+      read -p "$(echo -e "${RED}\033[1m\033[3m请输入tuic端口 (面板开放的udp端口): ${RESET}")" tuic_port
+fi
+    # Download sing-box
+    download_singbox && wait
+
+    # Generate configuration file
+    generate_config
+
+    # Configure services based on user selection
+    if [ "$INSTALL_VLESS" = "true" ]; then
+       echo -e "$(echo -e "${GREEN}\033[1m\033[3m配置 VLESS...${RESET}")"
+        # Your VLESS configuration code here
+    fi
+
+    if [ "$INSTALL_HYSTERIA2" = "true" ]; then
+     echo -e "$(echo -e "${GREEN}\033[1m\033[3m配置 Hysteria2...${RESET}")"
+        # Your Hysteria2 configuration code here
+    fi
+
+    if [ "$INSTALL_TUIC" = "true" ]; then
+       echo -e "$(echo -e "${GREEN}\033[1m\033[3m配置 TUIC...${RESET}")"
+        # Your TUIC configuration code here
+    fi
+
+    # Run sing-box
+    run_sb && sleep 3
+
+    # Get links
+    get_links
     
-    reading "\n确定继续安装吗?<ENTER默认安装>【y/n】: " choice
-     choice=${choice:-y}  # 默认值为 y
+    echo -e "$(bold_italic_purple "安装完成！")"
+}
+  
+uninstall_singbox() {
+    echo -e "$(bold_italic_purple "正在卸载sing-box，请稍后...")"
+    read -p $'\033[1;3;38;5;220m确定要卸载吗?<ENTER默认Y>【y/n】:\033[0m ' choice
+    choice=${choice:-y}  # 默认值为 y
+
     case "$choice" in
         [Yy])
+            # 终止相关进程
+            for process in 'web' 'bot' 'npm'; do
+                pids=$(pgrep -f "$process" 2>/dev/null)
+                if [ -n "$pids" ]; then
+                    kill -9 $pids 2>/dev/null
+                fi
+            done
+            
+            # 删除下载目录
             WORKDIR="$HOME/sbox"
-            mkdir -p "$WORKDIR"
-            cd "$WORKDIR"
-            
-            # read_nz_variables
-            read_vless_port
-            read_hy2_port
-            #read_tuic_port
-            download_singbox && wait
-            generate_config
-            run_sb && sleep 3
-            get_links
-            
-            echo -e "$(bold_italic_purple "安装完成！")"
+            if [ -d "$WORKDIR" ]; then
+                rm -rf "$WORKDIR" 2>/dev/null
+            fi
+
+            echo -e "$(bold_italic_purple "正在卸载......")"
+            sleep 2  # Optional: pause for a brief moment to let the user see the message
+            echo -e "$(bold_italic_purple "卸载完成！")"
             ;;
         [Nn])
             exit 0
@@ -166,42 +267,6 @@ install_singbox() {
             menu
             ;;
     esac
-}
-
-uninstall_singbox() {
-    echo -e "$(bold_italic_purple "正在卸载sing-box，请稍后...")"
-    read -p "确定要卸载吗?<ENTER默认Y>【y/n】: " choice
-    choice=${choice:-y}  # 默认值为 y
-    
-  case "$choice" in
-    [Yy])
-        # 终止相关进程
-        for process in 'web' 'bot' 'npm'; do
-            pids=$(pgrep -f "$process" 2>/dev/null)
-            if [ -n "$pids" ]; then
-                kill -9 $pids 2>/dev/null
-            fi
-        done
-        
-        # 删除下载目录
-        WORKDIR="$HOME/sbox"
-        if [ -d "$WORKDIR" ]; then
-            rm -rf "$WORKDIR" 2>/dev/null
-        fi
-
-        echo -e "$(bold_italic_purple "正在卸载......")"
-        sleep 2  # Optional: pause for a brief moment to let the user see the message
-        echo -e "$(bold_italic_purple "卸载完成！")"
-        ;;
-    [Nn])
-        exit 0
-        ;;
-    *)
-        echo -e "$(bold_italic_red "无效的选择，请输入y或n")"
-        menu
-        ;;
-esac
-
 }
 
 # Download Dependency Files
@@ -232,16 +297,33 @@ download_singbox() {
         chmod +x $FILENAME
     done
 }
-
+    
+ # Define color codes
+YELLOW="\033[33m"
+RESET="\033[0m"
+ 
+ # Define default paths using the current user's home directory
+CERT_PATH="${HOME}/sbox/cert.pem"
+PRIVATE_KEY_PATH="${HOME}/sbox/private.key"
+ 
 generate_config() {
+    # Generate reality key pair
     output=$(./web generate reality-keypair)
     private_key=$(echo "${output}" | awk '/PrivateKey:/ {print $2}')
     public_key=$(echo "${output}" | awk '/PublicKey:/ {print $2}')
 
+    # Generate TLS certificate and key
     openssl ecparam -genkey -name prime256v1 -out "$WORKDIR/private.key"
-    openssl req -new -x509 -days 3650 -key "$WORKDIR/private.key" -out "$WORKDIR/cert.pem" -subj "/CN=$USERNAME.serv00.net"
+    openssl req -new -x509 -days 3650 -key "$WORKDIR/private.key" -out "$WORKDIR/cert.pem" -subj "/CN=$HOSTNAME"
 
-    cat > "$WORKDIR/config.json" << EOF
+    # 确保用户提供了端口号
+    if [ -z "$vless_port" ] && [ -z "$hy2_port" ] && [ -z "$tuic_port" ]; then
+        echo "Error: No port number provided. Configuration file will not be generated."
+        return 1
+    fi
+
+    # Create configuration file based on selected services
+    cat > "$WORKDIR/config.json" <<EOF
 {
   "log": {
     "disabled": true,
@@ -282,78 +364,83 @@ generate_config() {
     "disable_cache": false,
     "disable_expire": false
   },
-    "inbounds": [
-    {
-       "tag": "hysteria-in",
-       "type": "hysteria2",
-       "listen": "::",
-       "listen_port": $hy2_port,
-       "users": [
-         {
-             "password": "$UUID"
-         }
-     ],
-     "masquerade": "https://bing.com",
-     "tls": {
-         "enabled": true,
-         "alpn": [
-             "h3"
-         ],
-         "certificate_path": "cert.pem",
-         "key_path": "private.key"
-        }
-    },
-    {
-        "tag": "vless-reality-vesion",
-        "type": "vless",
-        "listen": "::",
-        "listen_port": $vless_port,
-        "users": [
+  "inbounds": [
+    $(if [ "$INSTALL_VLESS" = "true" ]; then
+        echo '{
+          "tag": "vless-reality-version",
+          "type": "vless",
+          "listen": "::",
+          "listen_port": '$vless_port',
+          "users": [
             {
-              "uuid": "$UUID",
+              "uuid": "'$UUID'",
               "flow": "xtls-rprx-vision"
             }
-        ],
-        "tls": {
+          ],
+          "tls": {
             "enabled": true,
             "server_name": "www.ups.com",
             "reality": {
-                "enabled": true,
-                "handshake": {
-                    "server": "www.ups.com",
-                    "server_port": 443
-                },
-                "private_key": "$private_key",
-                "short_id": [
-                  ""
-                ]
+              "enabled": true,
+              "handshake": {
+                "server": "www.ups.com",
+                "server_port": 443
+              },
+              "private_key": "'$private_key'",
+              "short_id": [
+                ""
+              ]
             }
-        }
-    }
-    # {
-    #   "tag": "tuic-in",
-    #   "type": "tuic",
-    #   "listen": "::",
-    #   "listen_port": $tuic_port,
-    #   "users": [
-    #     {
-    #       "uuid": "$UUID",
-    #       "password": "admin123"
-    #     }
-    #   ],
-    #   "congestion_control": "bbr",
-    #   "tls": {
-    #     "enabled": true,
-    #     "alpn": [
-    #       "h3"
-    #     ],
-    #     "certificate_path": "cert.pem",
-    #     "key_path": "private.key"
-    #   }
-    # }
-
- ],
-    "outbounds": [
+          }
+        },'
+      fi)
+    $(if [ "$INSTALL_HYSTERIA2" = "true" ]; then
+        echo '{
+          "tag": "hysteria-in",
+          "type": "hysteria2",
+          "listen": "::",
+          "listen_port": '$hy2_port',
+          "users": [
+            {
+              "password": "'$UUID'"
+            }
+          ],
+          "masquerade": "https://bing.com",
+          "tls": {
+            "enabled": true,
+            "alpn": [
+              "h3"
+            ],
+            "certificate_path": "'$CERT_PATH'",
+            "key_path": "'$PRIVATE_KEY_PATH'"
+          }
+        },'
+      fi)
+    $(if [ "$INSTALL_TUIC" = "true" ]; then
+        echo '{
+          "tag": "tuic-in",
+          "type": "tuic",
+          "listen": "::",
+          "listen_port": '$tuic_port',
+          "users": [
+            {
+              "uuid": "'$UUID'",
+              "password": "admin123"
+            }
+          ],
+          "congestion_control": "bbr",
+          "tls": {
+            "enabled": true,
+            "alpn": [
+              "h3"
+            ],
+            "certificate_path": "'$CERT_PATH'",
+            "key_path": "'$PRIVATE_KEY_PATH'"
+          }
+        }'
+      fi)
+  ],
+  "outbounds": [
     {
       "type": "direct",
       "tag": "direct"
@@ -427,7 +514,7 @@ generate_config() {
         "format": "binary",
         "url": "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geosite/openai.srs",
         "download_detour": "direct"
-      },      
+      },
       {
         "tag": "geosite-category-ads-all",
         "type": "remote",
@@ -437,9 +524,9 @@ generate_config() {
       }
     ],
     "final": "direct"
-   },
-   "experimental": {
-      "cache_file": {
+  },
+  "experimental": {
+    "cache_file": {
       "path": "cache.db",
       "cache_id": "mycacheid",
       "store_fakeip": true
@@ -448,6 +535,7 @@ generate_config() {
 }
 EOF
 }
+
 # running files
 run_sb() {
     if [ -e "$WORKDIR/npm" ]; then
@@ -462,8 +550,8 @@ run_sb() {
             nohup "$WORKDIR/npm" -s ${NEZHA_SERVER}:${NEZHA_PORT} -p ${NEZHA_KEY} ${NEZHA_TLS} >/dev/null 2>&1 &
             sleep 2
             pgrep -x "npm" > /dev/null && green "npm is running" || { red "npm is not running, restarting..."; pkill -x "npm" && nohup "$WORKDIR/npm" -s "${NEZHA_SERVER}:${NEZHA_PORT}" -p "${NEZHA_KEY}" ${NEZHA_TLS} >/dev/null 2>&1 & sleep 2; purple "npm restarted"; }
-        else
-            purple "NEZHA variable is empty, skipping running"
+       # else
+        #     purple "NEZHA variable is empty, skipping running"
         fi
     fi
 
@@ -475,7 +563,7 @@ run_sb() {
 }
 get_links() {
     # 提示用户输入IP地址
-    read -p "请输入IP地址（或按回车自动检测）: " user_ip
+   read -p "$(echo -e "${CYAN}\033[1m请输入IP地址（或按回车自动检测）: ${RESET}")" user_ip
 
     # 如果用户输入了IP地址，使用用户提供的IP地址
     if [ -n "$user_ip" ]; then
@@ -486,31 +574,36 @@ get_links() {
     fi
 
     # 输出最终使用的IP地址
-    echo "设备的IP地址是: $IP"
-
+    echo -e "${CYAN}\033[1m设备的IP地址是: $IP${RESET}"
     # 获取IP信息
-    ISP=$(curl -s https://speed.cloudflare.com/meta | awk -F\" '{print $26"-"$18}' | sed -e 's/ /_/g')
-
+      USERNAME=$(whoami)
+   echo ""
     yellow "注意：v2ray或其他软件的跳过证书验证需设置为true,否则hy2或tuic节点可能不通\n"
 
     # 生成并保存配置文件
-    cat > "$WORKDIR/list.txt" <<EOF
-           vless://$UUID@$IP:$vless_port?encryption=none&flow=xtls-rprx-vision&security=reality&sni=www.ups.com&fp=chrome&pbk=$public_key&type=tcp&headerType=none#$ISP
+cat <<EOF > "$WORKDIR/list.txt"
+$(if [ "$INSTALL_VLESS" = "true" ]; then
+    echo -e "${YELLOW}\033[1mvless://$UUID@$IP:$vless_port?encryption=none&flow=xtls-rprx-vision&security=reality&sni=www.ups.com&fp=chrome&pbk=$public_key&type=tcp&headerType=none#${USERNAME}${RESET}"
+fi)
 
-          hysteria2://$UUID@$IP:$hy2_port/?sni=www.bing.com&alpn=h3&insecure=1#$ISP
-    
-         tuic://$UUID:admin123@$IP:$tuic_port?sni=www.bing.com&congestion_control=bbr&udp_relay_mode=native&alpn=h3&allow_insecure=1#$ISP  
+$(if [ "$INSTALL_HYSTERIA2" = "true" ]; then
+    echo -e "${YELLOW}\033[1mhysteria2://$UUID@$IP:$hy2_port/?sni=www.bing.com&alpn=h3&insecure=1#${USERNAME}${RESET}"
+fi)
 
+$(if [ "$INSTALL_TUIC" = "true" ]; then
+    echo -e "${YELLOW}\033[1mtuic://$UUID:admin123@$IP:$tuic_port?sni=www.bing.com&congestion_control=bbr&udp_relay_mode=native&alpn=h3&allow_insecure=1#${USERNAME}${RESET}"
+fi)
 EOF
 
-    cat "$WORKDIR/list.txt"
-    purple "list.txt saved successfully"
-    purple "Running done!"
-    sleep 3
-    rm -rf "$WORKDIR/npm" "$WORKDIR/boot.log" "$WORKDIR/sb.log" "$WORKDIR/core"
+# 显示生成的 list.txt 内容
+cat "$WORKDIR/list.txt"
+purple "list.txt saved successfully"
+purple "Running done!"
+
+# 清理临时文件
+sleep 3
+rm -rf "$WORKDIR/npm" "$WORKDIR/boot.log" "$WORKDIR/sb.log" "$WORKDIR/core"
 }
-
-
 # 定义颜色函数
 green() { echo -e "\e[1;32m$1\033[0m"; }
 red() { echo -e "\e[1;91m$1\033[0m"; }
@@ -583,33 +676,55 @@ is_singbox_installed() {
     [ -e "$WORKDIR/web" ] || [ -e "$WORKDIR/npm" ]
 }
 # 终止所有进程
-kill_all_tasks() {
-  echo -n -e "\033[1;91m正在清理所有进程，请稍后......\033[0m"
-  sleep 1  # Optional: pause for a brief moment before killing tasks
-
+# Function to prompt user for choice and kill processes accordingly
+manage_processes() {
+  # Define color codes
+  RED_BOLD='\033[1;31m'
+  RESET='\033[0m'
+    RED_BOLD='\033[1;31m'
+  YELLOW='\033[1;33m'
+  RESET='\033[0m'
+  
   # 获取当前用户名
   USERNAME=$(whoami)
   
-  # 调试：打印当前用户名
-  echo "当前用户名: $USERNAME"
+  echo -e "${RED_BOLD}请选择要执行的操作:${RESET}"
+  echo -e "${RED_BOLD}1. 清理所有进程,会断开连接${RESET}"
+  echo -e "${RED_BOLD}2. 只清理当前用户的进程${RESET}"
+printf "${YELLOW}输入选择 (1 或 2): ${RESET}"
+  read -r choice
 
-  # 尝试使用 pkill 来终止所有属于当前用户的进程
-  if pkill -u "$USERNAME"; then
-    echo "已成功清理所有进程。"
-  else
-    echo "清理进程失败。请检查是否有足够的权限或进程是否存在。"
-  fi
+  case $choice in
+    1)
+      if pkill -kill -u "$USERNAME"; then
+        echo -e "${RED_BOLD}已成功清理所有进程。${RESET}"
+      else
+        echo -e "${RED_BOLD}清理进程失败。请检查是否有足够的权限或进程是否存在。${RESET}"
+      fi
+      ;;
+    2)
+      if pkill -u "$USERNAME"; then
+        echo -e "${RED_BOLD}已成功清理所有属于用户 $USERNAME 的进程。${RESET}"
+      else
+        echo -e "${RED_BOLD}清理进程失败。请检查是否有足够的权限或进程是否存在。${RESET}"
+      fi
+      ;;
+    *)
+      echo -e "${RED_BOLD}无效的选择。${RESET}"
+      ;;
+  esac
 
   sleep 2  # Optional: pause to allow the user to see the message before exiting
 }
+
 
 # 主菜单
 menu() {
    clear
    echo ""
    purple "=== Serv00|sing-box一键安装脚本 ===\n"
-   purple "=== 转载老王脚本，去除tuic协议，增加UUID自动生成 ===\n"
-   echo -e "${green}脚本地址：${re}${yellow}https://github.com/yyfalbl/singbox-2${re}\n"
+   purple "=== 脚本更新，VL H2 TU协议，增加UUID自动生成 ===\n"
+  echo -e "${green}脚本地址：${re}\033[1;3;33mhttps://github.com/yyfalbl/singbox-2\033[0m${re}\n"
    purple "*****转载请著名出处，请勿滥用*****\n"
    echo ""
    # Example usage
@@ -628,7 +743,7 @@ check_singbox_installed
    echo  "==============="
    green "3. 查看节点信息"
    echo  "==============="
-   yellow "4. 清理所有进程"
+   yellow "4. 清理系统进程"
    echo  "==============="
    green "5. 启动web服务"
    echo  "==============="
@@ -641,8 +756,8 @@ check_singbox_installed
     case "${choice}" in
         1) install_singbox ;;
         2) uninstall_singbox ;;
-        3) cat $HOME/list.txt ;;
-        4) kill_all_tasks ;;
+        3) cat $WORKDIR/list.txt ;;
+        4) manage_processes ;;
         5) start_web ;;
         6) stop_web ;;
         0) exit 0 ;;
