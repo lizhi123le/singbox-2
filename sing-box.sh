@@ -243,7 +243,7 @@ RESET="\033[0m"
 #安装sing-box
 install_singbox() {
 
-    echo -e "${bold_italic_yellow}本脚本可以选择性安装四种协议 ${bold_italic_purple}(vless-reality | vmess | hysteria2 | tuic | 固定argo隧道 )${RESET}"
+    echo -e "${bold_italic_yellow}本脚本可以选择性安装四种协议 ${bold_italic_purple}(vless-reality | vmess | hysteria2 | tuic )${RESET}"
     echo -e "${bold_italic_yellow}开始运行前，请确保面板中 ${bold_italic_purple}已开放3个端口，一个TCP端口，两个UDP端口${RESET}"
     echo -e "${bold_italic_yellow}面板中 ${bold_italic_purple}Additional services中的Run your own applications${bold_italic_yellow}选项已开启为 ${bold_italic_purple1}Enabled${bold_italic_yellow} 状态${RESET}"
 
@@ -783,13 +783,14 @@ sleep 1
         # 自动检测IP地址
         IP=$(curl -s ipv4.ip.sb || { ipv6=$(curl -s --max-time 1 ipv6.ip.sb); echo "[$ipv6]"; })
     fi
-
+bold_italic_red='\033[1;3;31m'
+RESET='\033[0m'
     # 输出最终使用的IP地址
     echo -e "${CYAN}\033[1;3;32m设备的IP地址是: $IP${RESET}"
     # 获取IP信息
       USERNAME=$(whoami)
    echo ""
-    yellow "注意：v2ray或其他软件的跳过证书验证需设置为true,否则hy2或tuic节点可能不通\n"
+   echo -e "${bold_italic_red}注意：v2ray或其他软件的跳过证书验证需设置为true,否则hy2或tuic节点可能不通${RESET}"
 
     # 生成并保存配置文件
 cat <<EOF > "$WORKDIR/list.txt"
@@ -824,9 +825,9 @@ sleep 3
 rm -rf "$WORKDIR/npm" "$WORKDIR/boot.log" "$WORKDIR/sb.log" "$WORKDIR/core"
 }
 # 定义颜色函数
-green() { echo -e "\e[1;32m$1\033[0m"; }
-red() { echo -e "\e[1;91m$1\033[0m"; }
-purple() { echo -e "\e[1;35m$1\033[0m"; }
+green() { echo -e "\e[1;3;32m$1\033[0m"; }
+red() { echo -e "\e[1;3;91m$1\033[0m"; }
+purple() { echo -e "\e[1;3;35m$1\033[0m"; }
 reading() { read -p "$(red "$1")" "$2"; }
 
 # 启动 web 函数
@@ -931,10 +932,10 @@ is_singbox_installed() {
 # Function to prompt user for choice and kill processes accordingly
 manage_processes() {
   # Define color codes
-  RED_BOLD='\033[1;31m'
+  RED_BOLD='\033[1;3;31m'
   RESET='\033[0m'
-    RED_BOLD='\033[1;31m'
-  YELLOW='\033[1;33m'
+    RED_BOLD='\033[1;3;31m'
+  YELLOW='\033[1;3;33m'
   RESET='\033[0m'
   
   # 获取当前用户名
@@ -1004,13 +1005,13 @@ bold_italic_orange() {
 menu() {
    clear
    echo ""
-   magenta "=== Serv00|sing-box一键安装脚本 ==="
+   magenta "=== SERV00和CT8|SING-BOX一键安装脚本 ==="
    echo ""
-  bold_italic_orange "\033[1;3m=== 脚本更新，VLESS VMESS HY2 TUIC 协议，增加UUID自动生成 ===\033[0m\n"
-    magenta "=== 支持安装单，双，三个协议(面板最多只能开放3个端口)，自由选择 ===\n"
-  bold_italic_light_blue "=== 固定argo隧道 注意最多只能安装三个协议！ ===\n"
+  bold_italic_orange "\033[1;3m=== 脚本支持:VLESS VMESS HY2 TUIC 协议，UUID自动生成 ===\033[0m\n"
+    magenta "=== 支持安装：单，双，三个协议(面板最多只能开放3个端口)，自由选择 ===\n"
+  bold_italic_light_blue "=== 固定argo隧道 可以优选ip或优选域名！ ===\n"
   echo -e "${green}\033[1;3;33m脚本地址：\033[0m${re}\033[1;3;33mhttps://github.com/yyfalbl/singbox-2\033[0m${re}\n"
-   purple "\033[1;3m*****魔改老王脚本，转载请著名出处，请勿滥用*****\033[0m\n"
+   purple "\033[1;3m*****转载请著名出处，请勿滥用*****\033[0m\n"
    echo ""
    # Example usage
    check_singbox_installed
