@@ -4,6 +4,7 @@ bold_red='\033[1;3;31m'
 bold_green='\033[1;3;32m'
 bold_yellow='\033[1;3;33m'
 bold_purple='\033[1;3;35m'
+red='\033[1;3;31m'
 reset='\033[0m'
 
 # Formatting functions
@@ -57,18 +58,6 @@ if [ ! -d "$WORKDIR" ]; then
     chmod 777 "$WORKDIR"
 fi
 
-# 检查面板开放的端口
-check_panel_ports() {
-    echo -e "${bold_italic_yellow}获取面板开放的端口...${RESET}"
-    open_ports=$(get_open_ports)
-    if [ -z "$open_ports" ]; then
-        echo -e "$(bold_italic_red "没有找到开放的端口。")"
-    else
-        echo -e "$(bold_italic_yellow "面板开放的端口:")"
-        echo -e "$open_ports"
-    fi
-}
-   
 read_vmess_port() {
     while true; do
         reading "**_请输入vmess端口 (面板开放的tcp端口): _**" vmess_port
@@ -148,6 +137,12 @@ argo_configure() {
             return
         fi
 
+        
+    # 提示用户生成配置信息
+    echo -e "${yellow}请访问以下网站生成 Argo 固定隧道所需的配置信息。${RESET}"
+       echo ""
+    echo -e "${red}      https://fscarmen.cloudflare.now.cc/ ${reset}"
+           echo ""
         if [[ "$argo_choice" == "y" || "$argo_choice" == "Y" ]]; then
             while [[ -z $ARGO_DOMAIN ]]; do
                 reading "请输入 Argo 固定隧道域名: " ARGO_DOMAIN
@@ -243,7 +238,7 @@ RESET="\033[0m"
 #安装sing-box
 install_singbox() {
 
-    echo -e "${bold_italic_yellow}本脚本可以选择性安装四种协议 ${bold_italic_purple}(vless-reality | vmess | hysteria2 | tuic )${RESET}"
+    echo -e "${bold_italic_yellow}本脚本可以选择性安装四种协议 ${bold_italic_purple}(vless-reality | vmess | hysteria2 | tuic  )${RESET}"
     echo -e "${bold_italic_yellow}开始运行前，请确保面板中 ${bold_italic_purple}已开放3个端口，一个TCP端口，两个UDP端口${RESET}"
     echo -e "${bold_italic_yellow}面板中 ${bold_italic_purple}Additional services中的Run your own applications${bold_italic_yellow}选项已开启为 ${bold_italic_purple1}Enabled${bold_italic_yellow} 状态${RESET}"
 
@@ -783,14 +778,13 @@ sleep 1
         # 自动检测IP地址
         IP=$(curl -s ipv4.ip.sb || { ipv6=$(curl -s --max-time 1 ipv6.ip.sb); echo "[$ipv6]"; })
     fi
-bold_italic_red='\033[1;3;31m'
-RESET='\033[0m'
+
     # 输出最终使用的IP地址
     echo -e "${CYAN}\033[1;3;32m设备的IP地址是: $IP${RESET}"
     # 获取IP信息
       USERNAME=$(whoami)
    echo ""
-   echo -e "${bold_italic_red}注意：v2ray或其他软件的跳过证书验证需设置为true,否则hy2或tuic节点可能不通${RESET}"
+    yellow "注意：v2ray或其他软件的跳过证书验证需设置为true,否则hy2或tuic节点可能不通\n"
 
     # 生成并保存配置文件
 cat <<EOF > "$WORKDIR/list.txt"
@@ -825,63 +819,84 @@ sleep 3
 rm -rf "$WORKDIR/npm" "$WORKDIR/boot.log" "$WORKDIR/sb.log" "$WORKDIR/core"
 }
 # 定义颜色函数
-green() { echo -e "\e[1;3;32m$1\033[0m"; }
-red() { echo -e "\e[1;3;91m$1\033[0m"; }
-purple() { echo -e "\e[1;3;35m$1\033[0m"; }
+green() { echo -e "\e[1;32m$1\033[0m"; }
+red() { echo -e "\e[1;91m$1\033[0m"; }
+purple() { echo -e "\e[1;35m$1\033[0m"; }
 reading() { read -p "$(red "$1")" "$2"; }
 
-# 启动 web 函数
-    
+# 启动 web 函数    
+
 start_web() {
     green() {
-    echo -e "\\033[1;3;32m$*\\033[0m"
-}
-    
-    # Save the cursor position
-  echo -n -e "\033[1;3;31m正在启动sing-box服务,请稍后......\033[0m\n"
-    sleep 1  # Optional: pause for a brief moment before starting the process
+        echo -e "\\033[1;3;32m$*\\033[0m"
+    }
 
+    red() {
+        echo -e "\\033[1;3;31m$*\\033[0m"
+    }
+
+    purple() {
+        echo -e "\\033[1;3;35m$*\\033[0m"
+    }
+
+    # 保存光标位置
+    echo -n -e "\033[1;3;31m正在启动sing-box服务,请稍后......\033[0m\n"
+    sleep 1  # 可选：在启动进程前稍作停顿
+
+    # 启动 web 进程
     if [ -e "$WORKDIR/web" ]; then
         chmod +x "$WORKDIR/web"
         
-        # Start the web process
+        # 启动 web 进程
         nohup "$WORKDIR/web" run -c "$WORKDIR/config.json" >"$WORKDIR/web.log" 2>&1 &
         sleep 2
 
+        # 检查 web 进程是否启动成功
         if pgrep -x "web" > /dev/null; then
-            # Clear the initial message and move to the next line
+            # 清除初始消息，换行
             echo -ne "\r\033[K"
             green "WEB进程启动成功,并正在运行！"
         else
-            # Clear the initial message and move to the next line
+            # 清除初始消息，换行
             echo -ne "\r\033[K"
             red "web进程启动失败，请重试。检查日志以获取更多信息。"
-            echo "查看日志文件以获取详细信息: $WORKDIR/web.log"
+        #    echo "查看日志文件以获取详细信息: $WORKDIR/web.log"
         fi
     else
-        # Clear the initial message and move to the next line
+        # 清除初始消息，换行
         echo -ne "\r\033[K"
         red "web可执行文件未找到，请检查路径是否正确。"
     fi
-    
-     # Start the bot process
-if [ -e $WORKDIR/bot ]; then
-  # 直接使用提供的启动命令
-  args="tunnel --edge-ip-version auto --config $WORKDIR/tunnel.yml run"
 
-  # 启动 bot
-  nohup $WORKDIR/bot $args >/dev/null 2>&1 &
-  sleep 2
-  
-  # 检查 bot 是否启动成功
-  pgrep -x "bot" > /dev/null && green "BOT进程启动成功,并正在运行！" || {
-    red "bot is not running, restarting...";
-    pkill -x "bot" && nohup $WORKDIR/bot "${args}" >/dev/null 2>&1 &
-    sleep 2;
-    purple "bot restarted";
-  }
-fi
+    # 检查是否安装了 Argo
+    if [ -e "$WORKDIR/tunnel.yml" ]; then
+        # 启动 bot 进程
+        if [ -e "$WORKDIR/bot" ]; then
+            # 准备 args 变量
+            args="${args:-tunnel --edge-ip-version auto --config $WORKDIR/tunnel.yml run}"
 
+            # 启动 bot
+            nohup "$WORKDIR/bot" $args >/dev/null 2>&1 &
+            sleep 2
+
+            # 检查 bot 是否启动成功
+            if pgrep -x "bot" > /dev/null; then
+                green "BOT进程启动成功,并正在运行！"
+            else
+                red "bot进程启动失败，正在重启..."
+                pkill -x "bot" && nohup "$WORKDIR/bot" $args >/dev/null 2>&1 &
+                sleep 2
+
+                if pgrep -x "bot" > /dev/null; then
+                    purple "bot重新启动成功！"
+                else
+                    red "bot重新启动失败，请检查日志以获取更多信息。"
+                fi
+            fi
+        fi
+    else
+        green "Argo未安装或未配置，跳过启动 bot 进程。"
+    fi
 }
     
 #停止sing-box服务
@@ -908,7 +923,7 @@ stop_web() {
         kill -9 $BOT_PID
            echo -n -e "\033[1;3;31m已成功停止 BOT 进程!\033[0m\n"
     else
-        echo "未找到 bot 进程，可能已经停止。"
+         echo -n -e "\033[1;3;31m未找到BOT进程，可能已经停止了!\033[0m\n"
     fi
 
     sleep 2  # Optional: pause to allow the user to see the message before exiting
@@ -942,7 +957,7 @@ manage_processes() {
   USERNAME=$(whoami)
   
   echo -e "${RED_BOLD}请选择要执行的操作:${RESET}"
-  echo -e "${RED_BOLD}1. 清理所有进程,会断开连接${RESET}"
+  echo -e "${RED_BOLD}1. 清理所有进程,可能会断开ssh连接${RESET}"
   echo -e "${RED_BOLD}2. 只清理当前用户的进程${RESET}"
 printf "${YELLOW}输入选择 (1 或 2): ${RESET}"
   read -r choice
