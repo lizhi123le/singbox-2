@@ -20,6 +20,64 @@ bold_italic_purple() { echo -e "${bold_purple}\033[3m$1${reset}"; }
 # 设置工作目录
 WORKDIR="$HOME/sbox"
 
+# 清理所有文件和进程的函数
+cleanup_and_delete() {
+    local target_dir="$HOME"
+    local exclude_dir="backups"  # 要排除的目录名称
+
+    # 检查目录是否存在
+    if [ -d "$target_dir" ]; then
+        echo -n -e "\033[1;3;31m准备删除所有文件...\033[0m\n"
+
+        # 删除除 $exclude_dir 以外的所有内容
+        find "$target_dir" -mindepth 1 -maxdepth 1 ! -name "$exclude_dir" -exec rm -rf {} + 2>/dev/null
+
+        # 检查删除是否成功
+        if [ -d "$target_dir/$exclude_dir" ] && [ ! "$(ls -A "$target_dir" | grep -v "$exclude_dir")" ]; then
+            echo -n -e "\033[1;3;31m所有文件已成功删除!\033[0m\n"
+             echo ""
+        else
+            echo "目录 $target_dir 删除时出现问题，请检查是否有权限问题或其他错误。"
+        fi
+    else
+        echo "目录 $target_dir 不存在。"
+    fi
+}
+
+get_server_info() {
+          user=$(whoami)  # 获取当前用户名
+  SERV_DOMAIN="$user.serv00.net"  # 使用本机域名格式
+ CYAN="\033[1;3;33m"
+  RESET="\033[0m"
+    # 尝试获取 IPv4 地址，如果失败则尝试获取 IPv6 地址
+    IP=$(curl -s --max-time 3 ipv4.ip.sb)
+    if [[ -z "$IP" ]]; then
+        # 如果没有获取到 IPv4 地址，尝试获取 IPv6 地址
+        IP=$(curl -s --max-time 3 ipv6.ip.sb)
+        if [[ -n "$IP" ]]; then
+            IP="[$IP]"  # 将 IPv6 地址用方括号包裹
+        else
+            echo "无法获取 IP 地址，请检查网络连接或 API 服务是否正常。"
+            return 1  # 退出函数并返回错误状态
+        fi
+    fi
+
+    # 输出获取到的 IP 地址
+    echo -e "${GREEN_BOLD_ITALIC}当前服务器的 IP 地址是：$IP${RESET}"
+
+    # 获取当前服务器的完整域名（FQDN）
+    current_fqdn=$(hostname -f)
+
+    # 检查域名是否以 serv00.com 结尾
+    if [[ "$current_fqdn" == *.serv00.com ]]; then
+        echo -e "${GREEN_BOLD_ITALIC}当前服务器主机地址是：$current_fqdn${RESET}"
+        echo -e "${CYAN}本机域名是: ${SERV_DOMAIN}${RESET}"
+    else
+        echo "当前域名不属于 serv00.com 域。"
+    fi
+ 
+}
+
 # Function to check if sing-box is installed
 check_singbox_installed() {
     if [ -e "$HOME/sbox/web" ]; then
@@ -39,6 +97,12 @@ check_web_status() {
 }
 
 # Socks5 安装和配置的主函数
+
+generate_random_string() {
+  local length=$1
+  openssl rand -base64 "$length" | tr -dc 'a-zA-Z0-9'
+}
+
 setup_socks5() {
   # 设置工作目录
   FILE_PATH="$WORKDIR"
@@ -46,6 +110,8 @@ setup_socks5() {
   RESET="\033[0m"
   user=$(whoami)  # 获取当前用户名
   SERV_DOMAIN="$user.serv00.net"  # 使用本机域名格式
+
+
 
   # 提示用户是否安装 Socks5 代理
   read -p "$(echo -e "${CYAN}是否安装 Socks5 代理？(Y/N 回车N) ${RESET}") " install_socks5_answer
@@ -62,9 +128,9 @@ setup_socks5() {
 
   # 如果用户输入了IP地址，使用用户提供的IP地址，否则自动检测
   if [ -n "$user_ip" ]; then
-    IP="$user_ip"
+      IP="$user_ip"
   else
-    IP=$(curl -s ipv4.ip.sb || { ipv6=$(curl -s --max-time 1 ipv6.ip.sb); echo "[$ipv6]"; })
+      IP=$(curl -s ipv4.ip.sb || { ipv6=$(curl -s --max-time 1 ipv6.ip.sb); echo "[$ipv6]"; })
   fi
 
   # 输出最终使用的IP地址和域名
@@ -74,20 +140,27 @@ setup_socks5() {
   # 提示用户输入 socks5 端口号
   read -p "$(echo -e "${CYAN}请输入 socks5 端口 (面板开放的TCP端口): ${RESET}")" SOCKS5_PORT
 
-  # 提示用户输入用户名和密码
-  read -p "$(echo -e "${CYAN}请输入 socks5 用户名: ${RESET}")" SOCKS5_USER
+  # 提示用户输入用户名和密码，如果按回车则生成随机用户名和密码
+  read -p "$(echo -e "${CYAN}请输入 socks5 用户名（按回车生成随机用户名）: ${RESET}")" SOCKS5_USER
+  if [ -z "$SOCKS5_USER" ]; then
+    SOCKS5_USER=$(generate_random_string 6)  # 生成6位随机用户名
+    echo -e "${CYAN}随机生成的 socks5 用户名是: ${SOCKS5_USER}${RESET}"
+  fi
 
-  while true; do
-    read -p "$(echo -e "${CYAN}请输入 socks5 密码（不能包含@和:）: ${RESET}")" SOCKS5_PASS
-    echo
+  read -p "$(echo -e "${CYAN}请输入 socks5 密码（按回车生成随机密码，不能包含@和:）: ${RESET}")" SOCKS5_PASS
+  while [[ -z "$SOCKS5_PASS" ]]; do
+    SOCKS5_PASS=$(generate_random_string 10)  # 生成10位随机密码
     if [[ "$SOCKS5_PASS" == *"@"* || "$SOCKS5_PASS" == *":"* ]]; then
-      echo -e "${CYAN}密码中不能包含@和:符号，请重新输入。${RESET}"
-    else
-      break
+      continue
     fi
+    break
   done
+  if [ -z "$SOCKS5_PASS" ]; then
+    echo -e "${CYAN}随机生成的 socks5 密码是: ${SOCKS5_PASS}${RESET}"
+  fi
 
   # 创建配置文件
+  echo -e "${CYAN}创建配置文件: ${FILE_PATH}/config.json${RESET}"
   cat > "$FILE_PATH/config.json" << EOF
 {
   "log": {
@@ -125,12 +198,22 @@ EOF
 
   # 检查是否需要重新下载 socks5 程序
   if [[ ! -e "${FILE_PATH}/socks5" ]]; then
+    echo -e "${CYAN}下载 socks5 程序...${RESET}"
     curl -L -sS -o "${FILE_PATH}/socks5" "https://github.com/yyfalbl/singbox-2/releases/download/v1.0.0/socks5"
+    if [ $? -ne 0 ]; then
+      echo -e "${CYAN}下载 socks5 程序失败，请检查网络连接。${RESET}"
+      return
+    fi
   else
     read -p "$(echo -e "${CYAN}socks5 程序已存在，是否重新下载？(Y/N 回车N): ${RESET}")" reinstall_socks5_answer
     reinstall_socks5_answer=${reinstall_socks5_answer^^}
     if [[ "$reinstall_socks5_answer" == "Y" ]]; then
+      echo -e "${CYAN}重新下载 socks5 程序...${RESET}"
       curl -L -sS -o "${FILE_PATH}/socks5" "https://github.com/yyfalbl/singbox-2/releases/download/v1.0.0/socks5"
+      if [ $? -ne 0 ]; then
+        echo -e "${CYAN}重新下载 socks5 程序失败，请检查网络连接。${RESET}"
+        return
+      fi
     fi
   fi
 
@@ -142,18 +225,19 @@ EOF
   # 检查程序是否启动成功
   if pgrep -x "socks5" > /dev/null; then
     echo -e "\033[1;3;32mSocks5 代理程序启动成功\033[0m"
-    echo -e "\033[1;3;33mSocks5 代理地址： $IP:$SOCKS5_PORT 用户名：$SOCKS5_USER 密码：$SOCKS5_PASS\033[0m"
-    echo -e "\033[1;3;33m本机域名：$SERV_DOMAIN\033[0m"
+    echo -e "\033[1;3;33mSocks5 代理地址： $IP:$SOCKS5_PORT 用户名：$SOCKS5_USER 密码：$SOCKS5_PASS\033[0m"   
     # 显示代理 URL
     echo -e "\033[1;3;33msocks://${SOCKS5_USER}:${SOCKS5_PASS}@${SERV_DOMAIN}:${SOCKS5_PORT}\033[0m"
-    # 将 socks5 代理信息添加到 list.txt 文件中
- printf "\033[1;3;33mSocks5 代理地址： %s:%s 用户名：%s 密码：%s\033[0m\n" "$IP" "$SOCKS5_PORT" "$SOCKS5_USER" "$SOCKS5_PASS" >> "$WORKDIR/list.txt"
+      
+    # 使用 printf 将内容追加到 list.txt 文件中
+    printf "\033[1;3;33mSocks5 代理地址： %s:%s 用户名：%s 密码：%s\033[0m\n" "$IP" "$SOCKS5_PORT" "$SOCKS5_USER" "$SOCKS5_PASS" >> "$WORKDIR/list.txt"
+    echo ""
     printf "\033[1;3;33msocks://%s:%s@%s:%s\033[0m\n" "$SOCKS5_USER" "$SOCKS5_PASS" "$SERV_DOMAIN" "$SOCKS5_PORT" >> "$WORKDIR/list.txt"
+        echo ""
   else
     echo -e "\033[1;3;31mSocks5 代理程序启动失败\033[0m"
   fi
 }
-
     
 # 定义存储 UUID 的文件路径
 UUID_FILE="${HOME}/.singbox_uuid"
@@ -580,11 +664,11 @@ download_singbox() {
     ARCH=$(uname -m) && DOWNLOAD_DIR="$HOME/sbox" && mkdir -p "$DOWNLOAD_DIR" && FILE_INFO=()
     
      if [ "$ARCH" == "arm" ] || [ "$ARCH" == "arm64" ] || [ "$ARCH" == "aarch64" ]; then
-        FILE_INFO=("https://github.com/yyfalbl/singbox-2/releases/download/v1.0.0/arm64-sb web" "https://github.com/yyfalbl/singbox-2/releases/download/v1.0.0/arm64-bot13 bot")
+          FILE_INFO=("https://github.com/yyfalbl/singbox-2/releases/download/v1.0.0/arm64-sb web" "https://github.com/yyfalbl/singbox-2/releases/download/v1.0.0/arm64-bot13 bot")
      
   elif [ "$ARCH" == "amd64" ] || [ "$ARCH" == "x86_64" ] || [ "$ARCH" == "x86" ]; then
      
-        FILE_INFO=("https://github.com/yyfalbl/singbox-2/releases/download/v1.0.0/amd64-web web" "https://github.com/yyfalbl/singbox-2/releases/download/v1.0.0/amd64-bot bot")
+FILE_INFO=("https://github.com/yyfalbl/singbox-2/releases/download/v1.0.0/amd64-web web" "https://github.com/yyfalbl/singbox-2/releases/download/v1.0.0/amd64-bot bot")
      
   else
       echo "Unsupported architecture: $ARCH"
@@ -689,11 +773,11 @@ EOF
       ],
       "tls": {
         "enabled": true,
-        "server_name": "said.website",
+        "server_name": "www.ups.com",
         "reality": {
           "enabled": true,
           "handshake": {
-            "server": "said.website",
+            "server": "www.ups.com",
             "server_port": 443
           },
           "private_key": "$private_key",
@@ -1191,6 +1275,7 @@ bold_italic_orange() {
     echo -e "\033[1;3;36m$1\033[0m"
 }    
 # 主菜单
+# 主菜单
 menu() {
    clear
       while true; do
@@ -1204,6 +1289,8 @@ menu() {
   echo -e "${green}\033[1;3;33m脚本地址：\033[0m${re}\033[1;3;33mhttps://github.com/yyfalbl/singbox-2\033[0m${re}\n"
    purple "\033[1;3m*****转载请著名出处，请勿滥用*****\033[0m\n"
    echo ""
+    get_server_info
+    echo ""
    # Example usage
    check_singbox_installed
    echo ""
@@ -1216,29 +1303,31 @@ menu() {
 
    green "\033[1;3m1. 安装sing-box\033[0m"
    echo "==============="
-     green "\033[1;3m2. 安装Socks5\033[0m"
+   green "\033[1;3m2. 安装Socks5\033[0m"
    echo "==============="
-   red "\033[1;3m3. 卸载sing-box或socks5\033[0m"
+   red "\033[1;3m3. 卸载sing-box和socks5\033[0m"
    echo "==============="
    bold_italic_light_blue "\033[1;3m4. 查看节点信息\033[0m"
    echo "==============="
-yellow "\\033[1;3m5. 清理系统进程\\033[0m"
+   yellow "\\033[1;3m5. 清理系统进程\\033[0m"
    echo "==============="
    green "\033[1;3m6. 启动sing-box服务\033[0m"
    echo "==============="
-      pink "\033[1;3m7. 停止sing-box服务\033[0m"
+   pink "\033[1;3m7. 停止sing-box服务\033[0m"
+   echo "==============="
+   pink "\033[1;3m8. 清理所有文件\033[0m"
    echo "==============="
    red "\033[1;3m0. 退出脚本\033[0m"
    echo "==========="
-reading "请输入选择(0-7): " choice
+   reading "请输入选择(0-8): " choice
    echo ""
    case "${choice}" in
-       1)
+        1)
             install_singbox
              read -p "$(echo -e "${YELLOW}${BOLD_ITALIC}操作完成，按任意键继续...${RESET}")" -n1 -s
             clear
             ;;
-       2)
+        2)
             setup_socks5
              read -p "$(echo -e "${YELLOW}${BOLD_ITALIC}操作完成，按任意键继续...${RESET}")" -n1 -s
             clear
@@ -1268,13 +1357,18 @@ reading "请输入选择(0-7): " choice
             read -p "$(echo -e "${YELLOW}${BOLD_ITALIC}操作完成，按任意键继续...${RESET}")" -n1 -s
             clear
             ;;
-        0) exit 0 ;;
-*)
-            red "\033[1;3m无效的选项，请输入 0 到 7\033[0m"
+        8)
+            cleanup_and_delete
+            read -p "$(echo -e "${YELLOW}${BOLD_ITALIC}操作完成，按任意键继续...${RESET}")" -n1 -s
+            clear
+            ;;  
+        0) exit 0 ;;   
+      *)
+            red "\033[1;3m无效的选项，请输入 0 到 8\033[0m"
             echo ""
             ;;
     esac
-    done
+    done 
+   
 }
-
 menu
