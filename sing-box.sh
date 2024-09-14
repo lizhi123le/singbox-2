@@ -989,7 +989,7 @@ run_sb() {
     elif [[ $ARGO_AUTH =~ TunnelSecret ]]; then
       args="tunnel --edge-ip-version auto --config $WORKDIR/tunnel.yml run"
     else
-      args="tunnel --edge-ip-version auto --no-autoupdate --protocol http2 --logfile $WORKDIR/boot.log --loglevel info --url http://localhost:$vmess_port"
+      args="tunnel --edge-ip-version auto --no-autoupdate --protocol http2 --logfile $WORKDIR/boot.log --loglevel info --url http://localhost:8080"
     fi
     nohup $WORKDIR/bot $args >/dev/null 2>&1 &
     sleep 2
@@ -1127,7 +1127,7 @@ start_web() {
     fi
 
     # 检查是否安装了 Argo
-    if [ -e "$WORKDIR/tunnel.yml" ]; then
+      if [ -e "$WORKDIR/tunnel.yml" ]; then
         # 启动 bot 进程
         if [ -e "$WORKDIR/bot" ]; then
             # 准备 args 变量
