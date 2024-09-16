@@ -22,9 +22,22 @@ bold_italic_purple() { echo -e "${bold_purple}\033[3m$1${reset}"; }
 WORKDIR="$HOME/sbox"
 
 # 定义配置文件路径
-password_file="$HOME/.panel_password"
-panel_number_file="$HOME/.panel_number"
+password_file="$HOME/beiyong_ip/.panel_password"
+panel_number_file="$HOME/beiyong_ip/.panel_number"
 
+# 动态设置 login_url，基于当前服务器的 panel 号
+get_login_url() {
+    if [[ -f "$panel_number_file" ]]; then
+        panel_number=$(cat "$panel_number_file")
+    else
+        echo -ne "\033[1;3;33m请输入panel面板编号 (例如0,1,2,3,...): \033[0m"  # 黄色斜体加粗，不换行
+        read panel_number
+        echo "$panel_number" > "$panel_number_file"
+        chmod 600 "$panel_number_file"
+    fi
+    login_url="https://panel${panel_number}.serv00.com/login"
+    target_url="https://panel${panel_number}.serv00.com/ssl/www"
+}
 # 定义函数来检查密码是否存在
 get_password() {
     # 如果密码文件存在，读取密码
@@ -32,53 +45,98 @@ get_password() {
         password=$(cat "$password_file")
     else
         # 如果密码文件不存在，提示用户输入密码并保存
-        read -sp "请输入登录面板的密码: " password
-        echo
+        echo -ne "\033[1;3;33m请输入登录panel面板的密码: \033[0m"  # 黄色斜体加粗，不换行
+        read password  # 不隐藏输入
         # 将密码保存到文件中
         echo "$password" > "$password_file"
         chmod 600 "$password_file"  # 确保只有用户自己能读写这个文件
     fi
 }
-
-# 动态设置 login_url，基于当前服务器的 panel 号
-get_login_url() {
-    if [[ -f "$panel_number_file" ]]; then
-        panel_number=$(cat "$panel_number_file")
-    else
-        read -p "请输入面板编号 (例如0,1,2,3,...): " panel_number
-        echo "$panel_number" > "$panel_number_file"
-        chmod 600 "$panel_number_file"
-    fi
-     login_url="https://panel${panel_number}.serv00.com/login"
-    target_url="https://panel${panel_number}.serv00.com/ssl/www"
-}
-
 # 定义主函数
 process_ip() {
-    get_login_url
-    local log_file="wget_log.txt"
+    RED_BOLD_ITALIC='\033[1;3;31m'  # 红色加粗斜体
+    GREEN_BOLD_ITALIC='\033[1;3;32m'  # 绿色斜体加粗
+    RESET='\033[0m'  # 重置颜色
+    
+    local base_dir="$HOME/beiyong_ip"
+    local log_file="$base_dir/wget_log.txt"
+    local cookies_file="$base_dir/cookies.txt"
     local username=$(whoami)
-    get_password
-    local cookies_file="cookies.txt"
-       
-    wget -S --save-cookies "$cookies_file" --keep-session-cookies --post-data "username=$username&password=$password" "$login_url" -O /dev/null 2> "$log_file"
-    wget -S --load-cookies "$cookies_file" -O /dev/null "$target_url" 2>> "$log_file"
-    
-    # 只提取 IP 地址
-   local ip_addresses=$(awk '/\.\.\./ {getline; print}' "$log_file" | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' | sort | uniq)
-      #显示 IP 地址
- GREEN_BOLD_ITALIC='\033[1;3;32m'  # 绿色斜体加粗
-    RESET='\033[0m'  # 重置颜色 # 
-    if [[ -n "$ip_addresses" ]]; then
-        for ip in $ip_addresses; do
-           echo -e "${GREEN_BOLD_ITALIC}服务器备用 IP 地址: ${GREEN_BOLD_ITALIC}${ip}${RESET}"
-        done
-    else
-        echo "没有提取到 IP 地址"
+    local ip_address=""
+    local ip_file="$base_dir/saved_ip.txt"
+
+    # 确保 base_dir 目录存在
+    if [[ ! -d "$base_dir" ]]; then
+        mkdir -p "$base_dir"
     fi
-    
-    # 清理临时文件
-    rm -f "$cookies_file" 
+
+    # 检查是否存在 panel_password 和 panel_number 文件
+    if [[ -f "$base_dir/.panel_password" && -f "$base_dir/.panel_number" ]]; then
+        # 从文件中读取数据
+        password=$(cat "$base_dir/.panel_password")
+        login_url=$(cat "$base_dir/.panel_number")  # 假设 .panel_number 存储的是登录 URL
+    else
+        # 重新获取登录信息
+        get_login_url
+        get_password
+        # 保存密码和登录 URL
+        echo "$password" > "$base_dir/.panel_password"
+        echo "$login_url" > "$base_dir/.panel_number"
+    fi
+
+    # 检查是否已有保存的 IP 地址
+    if [[ -f "$ip_file" ]]; then
+        ip_address=$(cat "$ip_file")
+        echo -e "${GREEN_BOLD_ITALIC}当前服务器备用 IP 地址: ${ip_address}${RESET}"
+        return  # 已有 IP 地址则直接返回
+    fi
+
+    # 登录循环，直到登录成功或用户选择不再尝试
+    while true; do
+        # 发送登录请求并检查是否成功
+        wget -S --save-cookies "$cookies_file" --keep-session-cookies --post-data "username=$username&password=$password" "$login_url" -O /dev/null 2> "$log_file"
+        
+        # 检查登录是否成功（通过判断 log 文件中是否包含 HTTP 状态码 200 或 302）
+        if grep -q "HTTP/.* 200 OK" "$log_file" || grep -q "HTTP/.* 302 Found" "$log_file"; then
+            wget -S --load-cookies "$cookies_file" -O /dev/null "$target_url" 2>> "$log_file"
+            
+            # 提取第一个 IP 地址
+            ip_address=$(awk '/\.\.\./ {getline; print}' "$log_file" | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' | sort | uniq | head -n 1)
+            
+            if [[ -n "$ip_address" ]]; then
+                echo -e "${GREEN_BOLD_ITALIC}服务器备用 IP 地址: ${ip_address}${RESET}"
+                # 保存 IP 地址到文件
+                echo "$ip_address" > "$ip_file"
+                break  # 登录成功并提取到 IP 后，退出循环和函数
+            else
+                echo "没有提取到 IP 地址"
+                rm -f "$cookies_file"
+                rm -f "$log_file"
+                return  # 没有 IP 地址时退出
+            fi
+        else
+            echo "登录失败，请检查用户名或密码。"
+            # 清理旧的密码和编号文件
+            rm -f "$base_dir/.panel_password" "$base_dir/.panel_number"
+            # 清理临时文件
+            rm -f "$cookies_file"
+            rm -f "$log_file"
+            
+            # 提示用户是否重新尝试登录
+            read -p "是否重新登录？（y/n）: " choice
+            if [[ "$choice" =~ ^[Nn]$ ]]; then
+                echo "退出登录流程。"
+                return  # 用户选择不再登录时退出
+            fi
+            
+            # 重新获取登录信息
+            echo "重新获取登录信息..."
+            get_login_url
+            get_password
+            echo "$password" > "$base_dir/.panel_password"
+            echo "$login_url" > "$base_dir/.panel_number"
+        fi
+    done
 }
 
 
@@ -126,14 +184,14 @@ get_server_info() {
 
     # 输出获取到的 IP 地址
     echo -e "${GREEN_BOLD_ITALIC}当前服务器的 IP 地址是：$IP${RESET}"
-
+              process_ip
     # 获取当前服务器的完整域名（FQDN）
     current_fqdn=$(hostname -f)
 
     # 检查域名是否以 serv00.com 结尾
     if [[ "$current_fqdn" == *.serv00.com ]]; then
         echo -e "${GREEN_BOLD_ITALIC}当前服务器主机地址是：$current_fqdn${RESET}"
-    process_ip
+   
         echo -e "${CYAN}本机域名是: ${SERV_DOMAIN}${RESET}"
     else
         echo "当前域名不属于 serv00.com 域。"
@@ -1322,9 +1380,10 @@ yellow() {
 purple() {
     echo -e "\\033[1;35m$*\\033[0m"
 }
- reading() {
+reading() {
     echo -ne "\\033[1;3;33m$1\\033[0m"  # 显示黄色加粗斜体的提示
-    read -r "$2"  # 读取用户输入
+    read -r input  # 暂时存储用户输入
+    eval "$2=\$input"  # 将用户输入的内容赋值给指定的变量
 }
     magenta() {
     echo -e "\033[1;3;33m$1\033[0m"
@@ -1341,8 +1400,8 @@ bold_italic_orange() {
 # 主菜单
 # 主菜单
 menu() {
-   clear
-      while true; do
+     while true; do
+        clear
    echo ""
    magenta "=== SERV00和CT8|SING-BOX一键安装脚本 ==="
    echo ""
@@ -1352,7 +1411,7 @@ menu() {
     bold_italic_light_blue "=== argo隧道配置文件生成网址  https://fscarmen.cloudflare.now.cc/ ===\n"
   echo -e "${green}\033[1;3;33m脚本地址：\033[0m${re}\033[1;3;33mhttps://github.com/yyfalbl/singbox-2\033[0m${re}\n"
    purple "\033[1;3m*****转载请著名出处，请勿滥用*****\033[0m\n"
-   echo ""
+   echo ""  
     get_server_info
     echo ""
    # Example usage
@@ -1383,6 +1442,8 @@ menu() {
    echo "==============="
    red "\033[1;3m0. 退出脚本\033[0m"
    echo "==========="
+ # 清理输入缓冲区
+   #     while read -t 0 -n 1; do : ; done
    reading "请输入选择(0-8): " choice
    echo ""
    case "${choice}" in
@@ -1432,7 +1493,7 @@ menu() {
             echo ""
             ;;
     esac
-    done 
+    done
    
 }
 menu
