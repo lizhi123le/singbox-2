@@ -30,7 +30,7 @@ get_login_url() {
     if [[ -f "$panel_number_file" ]]; then
         panel_number=$(cat "$panel_number_file")
     else
-        echo -ne "\033[1;3;33m请输入panel面板编号 (例如0,1,2,3,...): \033[0m"  # 黄色斜体加粗，不换行
+        echo -ne "\033[1;3;33m请输入panel面板编号 (必须输入panel后面的数字...): \033[0m"  # 黄色斜体加粗，不换行
         read panel_number
         echo "$panel_number" > "$panel_number_file"
         chmod 600 "$panel_number_file"
@@ -45,7 +45,7 @@ get_password() {
         password=$(cat "$password_file")
     else
         # 如果密码文件不存在，提示用户输入密码并保存
-        echo -ne "\033[1;3;33m请输入登录panel面板的密码: \033[0m"  # 黄色斜体加粗，不换行
+        echo -ne "\033[1;3;33m请输入登录panel面板的密码(填不填谁便你,直接按Enter键): \033[0m"  # 黄色斜体加粗，不换行
         read password  # 不隐藏输入
         # 将密码保存到文件中
         echo "$password" > "$password_file"
@@ -55,7 +55,7 @@ get_password() {
 # 定义主函数
 process_ip() {
     RED_BOLD_ITALIC='\033[1;3;31m'  # 红色加粗斜体
-    GREEN_BOLD_ITALIC='\033[1;3;32m'  # 绿色斜体加粗
+    ZREEN_BOLD_ITALIC='\033[1;3;35m' 
     RESET='\033[0m'  # 重置颜色
     
     local base_dir="$HOME/beiyong_ip"
@@ -87,7 +87,7 @@ process_ip() {
     # 检查是否已有保存的 IP 地址
     if [[ -f "$ip_file" ]]; then
         ip_address=$(cat "$ip_file")
-        echo -e "${GREEN_BOLD_ITALIC}当前服务器备用 IP 地址: ${ip_address}${RESET}"
+        echo -e "${ZREEN_BOLD_ITALIC}当前服务器备用 IP 地址: ${ip_address}${RESET}"
         return  # 已有 IP 地址则直接返回
     fi
 
@@ -115,7 +115,7 @@ process_ip() {
                 return  # 没有 IP 地址时退出
             fi
         else
-            echo "登录失败，请检查用户名或密码。"
+           echo -e "\e[1;3;31m登录失败，请检查用户名或密码！\e[0m"
             # 清理旧的密码和编号文件
             rm -f "$base_dir/.panel_password" "$base_dir/.panel_number"
             # 清理临时文件
@@ -123,14 +123,15 @@ process_ip() {
             rm -f "$log_file"
             
             # 提示用户是否重新尝试登录
-            read -p "是否重新登录？（y/n）: " choice
-            if [[ "$choice" =~ ^[Nn]$ ]]; then
-                echo "退出登录流程。"
+         echo -n -e "\e[1;3;33m是否重新登录？（y/n）:\e[0m" 
+         read -r choice
+             if [[ "$choice" =~ ^[Nn]$ ]]; then
+           echo -e "\e[1;3;31m退出登录流程。\e[0m"
                 return  # 用户选择不再登录时退出
             fi
             
             # 重新获取登录信息
-            echo "重新获取登录信息..."
+         #   echo "重新获取登录信息..."
             get_login_url
             get_password
             echo "$password" > "$base_dir/.panel_password"
@@ -143,19 +144,26 @@ process_ip() {
 # 清理所有文件和进程的函数
 cleanup_and_delete() {
     local target_dir="$HOME"
-    local exclude_dir="backups"  # 要排除的目录名称
+    local exclude_dirs=("backups" "beiyong_ip")  # 要排除的目录名称数组
 
     # 检查目录是否存在
     if [ -d "$target_dir" ]; then
         echo -n -e "\033[1;3;31m准备删除所有文件...\033[0m\n"
+       sleep 3
+        # 构建排除条件
+        local exclude_pattern=""
+        for dir in "${exclude_dirs[@]}"; do
+            exclude_pattern+="! -name $dir "
+        done
 
-        # 删除除 $exclude_dir 以外的所有内容
-        find "$target_dir" -mindepth 1 -maxdepth 1 ! -name "$exclude_dir" -exec rm -rf {} + 2>/dev/null
+        # 删除除排除目录以外的所有内容
+        eval "find \"$target_dir\" -mindepth 1 -maxdepth 1 $exclude_pattern-exec rm -rf {} + 2>/dev/null"
 
         # 检查删除是否成功
-        if [ -d "$target_dir/$exclude_dir" ] && [ ! "$(ls -A "$target_dir" | grep -v "$exclude_dir")" ]; then
+        local remaining_items=$(find "$target_dir" -mindepth 1 -maxdepth 1 | grep -v "${exclude_dirs[0]}" | grep -v "${exclude_dirs[1]}")
+        if [ -d "$target_dir/${exclude_dirs[0]}" ] && [ -d "$target_dir/${exclude_dirs[1]}" ] && [ -z "$remaining_items" ]; then
             echo -n -e "\033[1;3;31m所有文件已成功删除!\033[0m\n"
-             echo ""
+            echo ""
         else
             echo "目录 $target_dir 删除时出现问题，请检查是否有权限问题或其他错误。"
         fi
@@ -184,15 +192,15 @@ get_server_info() {
 
     # 输出获取到的 IP 地址
     echo -e "${GREEN_BOLD_ITALIC}当前服务器的 IP 地址是：$IP${RESET}"
-              process_ip
+              
     # 获取当前服务器的完整域名（FQDN）
     current_fqdn=$(hostname -f)
 
     # 检查域名是否以 serv00.com 结尾
     if [[ "$current_fqdn" == *.serv00.com ]]; then
         echo -e "${GREEN_BOLD_ITALIC}当前服务器主机地址是：$current_fqdn${RESET}"
-   
         echo -e "${CYAN}本机域名是: ${SERV_DOMAIN}${RESET}"
+        process_ip
     else
         echo "当前域名不属于 serv00.com 域。"
     fi
@@ -566,19 +574,27 @@ RESET="\033[0m"
   
 #安装sing-box
 install_singbox() {
-
+bold_italic_red='\033[1;3;31m'
+reset='\033[0m'
     echo -e "${bold_italic_yellow}本脚本可以选择性安装四种协议 ${bold_italic_purple}(vless-reality | vmess | hysteria2 | tuic  )${RESET}"
     echo -e "${bold_italic_yellow}开始运行前，请确保面板中 ${bold_italic_purple}已开放3个端口，一个TCP端口，两个UDP端口${RESET}"
     echo -e "${bold_italic_yellow}面板中 ${bold_italic_purple}Additional services中的Run your own applications${bold_italic_yellow}选项已开启为 ${bold_italic_purple1}Enabled${bold_italic_yellow} 状态${RESET}"
 
-    echo -e "${bold_italic_yellow}确定继续安装吗?<ENTER默认安装>【y/n】${reset}:\c"  
+  # 提示用户输入
+while true; do
+    echo -e "${bold_italic_yellow}确定继续安装吗?<ENTER默认安装>【y/n】${reset}:\c"
     read -p "" choice
-    choice=${choice:-y}  # Default to y
+    choice=${choice:-y}  # 如果没有输入，默认值为 y
 
-    if [[ "$choice" != [Yy] ]]; then
+    if [[ "$choice" =~ ^[Yy]$ ]]; then
+        break  # 如果输入是 y 或 Y，退出循环
+    elif [[ "$choice" =~ ^[Nn]$ ]]; then
         echo -e "$(bold_italic_red "安装已取消")"
-        exit 0
+        exit 0  # 如果输入是 n 或 N，取消安装并退出
+    else
+        echo -e "${bold_italic_red}无效输入，请重新输入！！！${reset}"
     fi
+done
 
     WORKDIR="$HOME/sbox"
     mkdir -p "$WORKDIR"
@@ -755,18 +771,18 @@ uninstall_singbox() {
             WORKDIR="$HOME/sbox"
             if [ -d "$WORKDIR" ]; then
                 rm -rf "$WORKDIR" 2>/dev/null
-                echo -e "$(bold_italic_purple "已删除工作目录：$WORKDIR。")"
+                echo -e "$(bold_italic_purple "已删除程序配置文件")"
             fi
 
             # 删除 Socks5 配置文件
             SOCKS5_CONFIG="$WORKDIR/config.json"
             if [ -f "$SOCKS5_CONFIG" ]; then
                 rm -f "$SOCKS5_CONFIG" 2>/dev/null
-                echo -e "$(bold_italic_purple "已删除 Socks5 配置文件：$SOCKS5_CONFIG。")"
+                echo -e "$(bold_italic_purple "已删除 Socks5 配置文件")"
             fi
 
             echo -e "$(bold_italic_purple "正在卸载......")"
-            sleep 2  # 可选：暂停片刻让用户看到消息
+            sleep 3  # 可选：暂停片刻让用户看到消息
             echo -e "$(bold_italic_purple "卸载完成！")"
             ;;
       
@@ -1120,8 +1136,7 @@ run_sb() {
 }
   
 get_links() {
-  
-    get_argodomain() {
+  get_argodomain() {
     if [[ -n $ARGO_AUTH ]]; then
       echo "$ARGO_DOMAIN"
     else
@@ -1132,17 +1147,27 @@ argodomain=$(get_argodomain)
 echo -e "\e[1;3;32mArgoDomain:\e[1;3;35m${argodomain}\e[0m\n"
 sleep 1
   
-    # 提示用户输入IP地址
-   read -p "$(echo -e "${CYAN}\033[1;3;31m请输入IP地址（或按回车自动检测）: ${RESET}") " user_ip
+  # 提示用户是否使用备用IP地址
+  read -p "$(echo -e "${CYAN}\033[1;3;33m是否启用备用IP地址（输入y确认，否则按Enter键自动检测）: ${RESET}") " choice
 
-    # 如果用户输入了IP地址，使用用户提供的IP地址
-    if [ -n "$user_ip" ]; then
-        IP=$user_ip
+ # 如果用户输入 y，则调用备用IP处理函数
+  if [[ "$choice" == "y" || "$choice" == "Y" ]]; then
+   if [[ -f "$HOME/beiyong_ip/saved_ip.txt" ]]; then
+        process_ip
+        IP=$(cat "$HOME/beiyong_ip/saved_ip.txt")  # 从文件中读取备用 IP 地址
+       # echo -e "${CYAN}\033[1;3;32m用户选择备用IP地址: $IP${RESET}"
     else
-        # 自动检测IP地址
+            echo -e "${RED_BOLD_ITALIC}备用 IP 文件不存在，自动获取 IP 地址...${RESET}"
+            # 自动获取 IP 地址 (首先检测IPv4，如果失败，则尝试IPv6)
+            IP=$(curl -s ipv4.ip.sb || { ipv6=$(curl -s --max-time 1 ipv6.ip.sb); echo "[$ipv6]"; })
+            echo -e "${CYAN}\033[1;3;32m自动获取的设备IP地址是: $IP${RESET}"
+        fi
+    else
+        # 自动检测IP地址 (首先检测IPv4，如果失败，则尝试IPv6)
         IP=$(curl -s ipv4.ip.sb || { ipv6=$(curl -s --max-time 1 ipv6.ip.sb); echo "[$ipv6]"; })
+        echo -e "${CYAN}\033[1;3;32m自动检测的设备IP地址是: $IP${RESET}"
     fi
-
+    
 current_fqdn=$(hostname -f)
 
 # 检查域名是否以 serv00.com 结尾
@@ -1155,12 +1180,14 @@ echo -e "${GREEN_BOLD_ITALIC}当前服务器的地址是：$current_fqdn${RESET}
   fi  
     
     # 输出最终使用的IP地址
-    echo -e "${CYAN}\033[1;3;32m设备的IP地址是: $IP${RESET}"
+    echo -e "${CYAN}\033[1;3;32m最终使用的IP地址是: $IP${RESET}"
     # 获取用户名信息
       USERNAME=$(whoami)
    echo ""
+    sleep 3
   printf "${RED}${BOLD_ITALIC}注意：v2ray或其他软件的跳过证书验证需设置为true, 否则hy2或tuic节点可能不通${RESET}\n"
-
+     echo ""
+      sleep 3
     # 生成并保存配置文件
 cat <<EOF > "$WORKDIR/list.txt"
 $(if [ "$INSTALL_VLESS" = "true" ]; then
@@ -1204,7 +1231,7 @@ red() { echo -e "\e[1;91m$1\033[0m"; }
 purple() { echo -e "\e[1;35m$1\033[0m"; }
 reading() { read -p "$(red "$1")" "$2"; }
 
-# 启动 web 函数    
+# 启动 web和bot 函数    
 
 start_web() {
     green() {
@@ -1248,35 +1275,35 @@ start_web() {
         red "web可执行文件未找到，请检查路径是否正确。"
     fi
 
-    # 检查是否安装了 Argo
-      if [ -e "$WORKDIR/tunnel.yml" ]; then
-        # 启动 bot 进程
-        if [ -e "$WORKDIR/bot" ]; then
-            # 准备 args 变量
-            args="${args:-tunnel --edge-ip-version auto --config $WORKDIR/tunnel.yml run}"
+    # 启动bot进程
+     if [ -e "$WORKDIR/bot" ]; then
+    # 检查 tunnel.yml 文件是否存在
+    if [ -e "$WORKDIR/tunnel.yml" ]; then
+        args="${args:-tunnel --edge-ip-version auto --config $WORKDIR/tunnel.yml run}"
+    else
+        args="tunnel --edge-ip-version auto --no-autoupdate --protocol http2 --logfile $WORKDIR/boot.log --loglevel info --url http://localhost:8080"
+    fi
+    
+    # 启动 bot 进程
+    nohup "$WORKDIR/bot" $args >> "$WORKDIR/bot.log" 2>&1 &
+    sleep 2
 
-            # 启动 bot
-            nohup "$WORKDIR/bot" $args >/dev/null 2>&1 &
-            sleep 2
-
-            # 检查 bot 是否启动成功
-            if pgrep -x "bot" > /dev/null; then
-                green "BOT进程启动成功,并正在运行！"
-            else
-                red "bot进程启动失败，正在重启..."
-                pkill -x "bot" && nohup "$WORKDIR/bot" $args >/dev/null 2>&1 &
-                sleep 2
-
-                if pgrep -x "bot" > /dev/null; then
-                    purple "bot重新启动成功！"
-                else
-                    red "bot重新启动失败，请检查日志以获取更多信息。"
-                fi
-            fi
+    # 检查 bot 是否启动成功
+    if pgrep -x "bot" > /dev/null; then
+        green "BOT进程启动成功,并正在运行！"
+        
+        # 检查 Argo 功能是否开启
+        if grep -q "tunnel:" "$WORKDIR/tunnel.yml" 2>/dev/null; then
+            green "===Argo隧道功能已开启==="
+        else
+            red "===Argo隧道未开启==="
         fi
     else
-        green "Argo未安装或未配置，跳过启动 bot 进程。"
+        red "bot进程启动失败，请检查日志以获取更多信息。"
     fi
+else
+    green "没有找到 bot 文件，无法启动 bot 进程。"
+fi
 }
     
 #停止sing-box服务
@@ -1324,7 +1351,6 @@ is_singbox_installed() {
     [ -e "$WORKDIR/web" ] || [ -e "$WORKDIR/npm" ]
 }
 # 终止所有进程
-# Function to prompt user for choice and kill processes accordingly
 manage_processes() {
   # Define color codes
   RED_BOLD='\033[1;3;31m'
@@ -1339,20 +1365,23 @@ manage_processes() {
   echo -e "${RED_BOLD}请选择要执行的操作:${RESET}"
   echo -e "${RED_BOLD}1. 清理所有进程,可能会断开ssh连接${RESET}"
   echo -e "${RED_BOLD}2. 只清理当前用户的进程${RESET}"
+  echo ""
 printf "${YELLOW}输入选择 (1 或 2): ${RESET}"
   read -r choice
-
+echo ""
   case $choice in
     1)
       if pkill -kill -u "$USERNAME"; then
-        echo -e "${RED_BOLD}已成功清理所有进程。${RESET}"
+        echo -e "${RED_BOLD}正在清理系统所有进程,请稍后......${RESET}"
+    sleep 3
       else
         echo -e "${RED_BOLD}清理进程失败。请检查是否有足够的权限或进程是否存在。${RESET}"
       fi
       ;;
     2)
       if pkill -u "$USERNAME"; then
-        echo -e "${RED_BOLD}已成功清理所有属于用户 $USERNAME 的进程。${RESET}"
+        echo -e "${RED_BOLD}正在清理当前用户进程,请稍后......${RESET}"
+        echo ""
       else
         echo -e "${RED_BOLD}清理进程失败。请检查是否有足够的权限或进程是否存在。${RESET}"
       fi
@@ -1362,7 +1391,7 @@ printf "${YELLOW}输入选择 (1 或 2): ${RESET}"
       ;;
   esac
 
-  sleep 2  # Optional: pause to allow the user to see the message before exiting
+  sleep 3  # Optional: pause to allow the user to see the message before exiting
 }
 # 定义颜色函数
 red() {
@@ -1398,7 +1427,6 @@ bold_italic_orange() {
     echo -e "\033[1;3;36m$1\033[0m"
 }    
 # 主菜单
-# 主菜单
 menu() {
      while true; do
         clear
@@ -1428,7 +1456,7 @@ menu() {
    echo "==============="
    green "\033[1;3m2. 安装Socks5\033[0m"
    echo "==============="
-   red "\033[1;3m3. 卸载sing-box和socks5\033[0m"
+   red "\033[1;3m3. 卸载所有程序\033[0m"
    echo "==============="
    bold_italic_light_blue "\033[1;3m4. 查看节点信息\033[0m"
    echo "==============="
@@ -1436,7 +1464,7 @@ menu() {
    echo "==============="
    green "\033[1;3m6. 启动sing-box服务\033[0m"
    echo "==============="
-   pink "\033[1;3m7. 停止sing-box服务\033[0m"
+   pink "\033[1;3m7. 停止所有服务\033[0m"
    echo "==============="
    pink "\033[1;3m8. 系统初始化\033[0m"
    echo "==============="
@@ -1491,6 +1519,7 @@ menu() {
       *)
             red "\033[1;3m无效的选项，请输入 0 到 8\033[0m"
             echo ""
+                  sleep 2
             ;;
     esac
     done
