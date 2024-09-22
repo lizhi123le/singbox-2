@@ -50,7 +50,7 @@ get_login_url() {
         [[ -z "$panel_number" ]] && unset panel_number
     fi
 
-    echo -ne "\033[1;3;33m请选择面板域名:\n1) serv00.com\n2) ct8.pl\n请输入选择 (1/2): \033[0m"  # 黄色斜体加粗，不换行
+    echo -ne "\033[1;3;33m请选择面板域名(注:此提示只会显示一次,获取备用IP):\n1) serv00.com\n2) ct8.pl\n请输入选择 (1/2): \033[0m"  # 黄色斜体加粗，不换行
     read -r choice
 
     case "$choice" in
@@ -87,7 +87,7 @@ process_ip() {
     GREEN_BOLD_ITALIC='\033[1;3;32m'  # 绿色加粗斜体
     RESET='\033[0m'  # 重置颜色
 
-    local base_dir="$HOME/beiyong_ip"
+    local base_dir="$HOME/.beiyong_ip"
     local log_file="$base_dir/wget_log.txt"
     local cookies_file="$base_dir/cookies.txt"
     local ip_address=""
@@ -171,7 +171,7 @@ process_ip() {
 # 清理所有文件和进程的函数
 cleanup_and_delete() {
     local target_dir="$HOME"
-    local exclude_dirs=("backups" "beiyong_ip")  # 要排除的目录名称数组
+    local exclude_dirs=("backups" ".beiyong_ip")  # 要排除的目录名称数组
 
     # 检查目录是否存在
     if [ -d "$target_dir" ]; then
@@ -532,7 +532,7 @@ loadPort() {
       fi
       if [[ "$port" == "Brak" || "$port" == "No" ]]; then
           if ! $no_port_flag; then
-              echo -e "\e[1;3;31m面板里没有开放的端口，正在随机分配.....\e[0m"  # 红色斜体加粗输出
+              echo -e "\e[1;3;31m正在检测面板开放的端口，并重新分配.....\e[0m"  # 红色斜体加粗输出
               sleep 1
               no_port_flag=true  # 设置标志为 true
           fi
@@ -567,27 +567,28 @@ cleanPort() {
 
 # 检查并处理端口分配和删除
 check_and_allocate_port() {
+     green() {
+         echo -e "\e[1;3;32m\e[1m\e[3m$1\e[0m"
+}
     local protocol_name=$1
     local protocol_type=$2
     local port_var_name=$3  # 存储端口的变量名
-
-    loadPort  # 确保获取最新的端口信息
+   # loadPort  # 确保获取最新的端口信息
     local existing_port=$(getPort "$protocol_type" "$protocol_name")
     local new_port=""
 
     if [[ "$existing_port" != "failed" ]]; then
-        bold_italic_yellow "已分配的 $protocol_name 端口 : $existing_port"
+        bold_italic_yellow "已分配的 $protocol_name 端口为 : $existing_port"
         
         # 提示是否删除已有的端口
-        read -p "$(echo -e '\e[1;33;3m是否删除该 '$protocol_name' 端口('$existing_port')？[y/n 默认: n]:\e[0m')" delete_input
+        read -p "$(echo -e '\e[1;33;3m是否重新分配 '$protocol_name' 端口('$existing_port')？[y/n Enter默认: n]:\e[0m')" delete_input
         delete_input=${delete_input:-n}
 
    if [[ "$delete_input" == "y" ]]; then
     # 尝试删除端口并判断是否成功
     rt=$(devil port del "$protocol_type" "$existing_port" 2>&1)
     if [[ "$rt" =~ "successfully" ]]; then
-        green "已成功删除 $protocol_name 端口: $existing_port"
-
+        echo -e "\e[1;33m\e[3m已成功删除 $protocol_name 端口: $existing_port\e[0m"
         # 加载最新的端口信息
         loadPort
 
@@ -600,7 +601,7 @@ check_and_allocate_port() {
         fi
     else
         if ! devil port list | grep -q "$existing_port"; then
-            green "已成功删除 $protocol_name 端口: $existing_port (确认无反馈)"
+            green "已成功删除 $protocol_name 端口: $existing_port "
             loadPort  # 加载最新的端口信息
             new_port=$(getPort "$protocol_type" "$protocol_name")
             if [[ "$new_port" == "failed" ]]; then
@@ -628,26 +629,30 @@ check_and_allocate_port() {
 
 read_vless_port() {
     loadPort
-    check_and_allocate_port "vless-reality端口" "tcp" "vless_port"
+    check_and_allocate_port "vless-reality" "tcp" "vless_port"
     bold_italic_green "你的vless-reality TCP 端口为: $vless_port"
+    sleep 2
 }
 
 read_vmess_port() {
     loadPort
-    check_and_allocate_port "vmess端口" "tcp" "vmess_port"
+    check_and_allocate_port "vmess" "tcp" "vmess_port"
     bold_italic_green "你的vmess TCP 端口为: $vmess_port"
+       sleep 2
 }
 
 read_hy2_port() {
     loadPort
-    check_and_allocate_port "hysteria2端口" "udp" "hy2_port"
+    check_and_allocate_port "hysteria2" "udp" "hy2_port"
     bold_italic_green "你的hysteria2 UDP 端口为: $hy2_port"
+     sleep 2
 }
 
 read_tuic_port() {
     loadPort
-    check_and_allocate_port "Tuic端口" "udp" "tuic_port"
+    check_and_allocate_port "Tuic" "udp" "tuic_port"
     bold_italic_green "你的Tuic UDP 端口为: $tuic_port"
+     sleep 2
 }
 
    
@@ -798,14 +803,27 @@ RESET="\033[0m"
         fi
     done
 }
-  
+start_service() {
+  if [ -f "$HOME/.enabled_flag" ]; then
+    echo -e "\e[32;1;3m=== Enabled 已为你自动已开启===  \e[33;1;3m注意：第一次开启Enabled后，请重启服务器后生效，切记！！！\e[0m"
+    return
+  fi
+
+  devil binexec on > /dev/null 2>&1 
+  if [ $? -eq 0 ]; then
+    echo -e "\e[32;1;3m=== Enabled 已为你自动已开启===  \e[33;1;3m注意：第一次开启Enabled后，请重启服务器后生效，切记！！！\e[0m"
+    touch "$HOME/.enabled_flag"  # 创建标志文件
+  else
+    echo -e "\e[31m\e[3m\e[1mEnabled未开启，请尝试手动开启.\e[0m"  # 红色斜体加粗输出
+  fi
+} 
 #安装sing-box
 install_singbox() {
 bold_italic_red='\033[1;3;31m'
 reset='\033[0m'
-    echo -e "${bold_italic_yellow}本脚本可以选择性安装四种协议 ${bold_italic_purple}(vless-reality | vmess | hysteria2 | tuic  )${RESET}"
-    echo -e "${bold_italic_yellow}开始运行前，请确保面板中 ${bold_italic_purple}已开放3个端口，一个TCP端口，两个UDP端口${RESET}"
-    echo -e "${bold_italic_yellow}面板中 ${bold_italic_purple}Additional services中的Run your own applications${bold_italic_yellow}选项已开启为 ${bold_italic_purple1}Enabled${bold_italic_yellow} 状态${RESET}"
+    echo -e "${bold_italic_yellow}本脚本可以选择性安装四种协议 ${bold_italic_purple}(vless-reality||vmess||hysteria2||tuic)${RESET}"
+    echo -e "${bold_italic_yellow}注意：脚本全自动化交互安装,无需登陆面板 ${bold_italic_purple}<<端口会根据用户选择的协议来进行自动分配>>${RESET}"
+start_service
 
   # 提示用户输入
 while true; do
@@ -839,6 +857,7 @@ display_options() {
     echo -e "${bold_italic_yellow}4: tuic${RESET}"
     echo -e "${bold_italic_yellow}5: 安装两个协议${RESET}"
     echo -e "${bold_italic_yellow}6: 安装三个协议${RESET}"
+    echo -e "${bold_italic_yellow}0: 退出安装${RESET}"
 }
 
 # 初始化安装选项
@@ -852,39 +871,63 @@ while true; do
     # 显示选项并读取用户选择
     display_options
     read -p "$(echo -e ${bold_italic_yellow}请输入你的选择${RESET}): " choices
-
+sleep 1
+    # 检查用户输入是否在有效范围内
+    if [[ -z "$choices" || ! "$choices" =~ ^[0-6]$ ]]; then
+        echo -e "${RED}\033[1m\033[1;3;31m输入错误，请输入有效的序号（范围为1-6）!${RESET}"
+        continue
+    fi
+# 处理退出选项
+    if [[ "$choices" == "0" ]]; then
+        echo -e "\033[1;31;3m已退出安装！\033[0m"
+        exit 0
+    fi
     # 处理用户选择
     if [[ "$choices" == "5" ]]; then
         echo -e "${bold_italic_yellow}请选择要安装的两个协议（请输入对应的序号，用空格分隔）${RESET}"
         read -p "$(echo -e ${bold_italic_yellow}请输入你的选择${RESET}): " choices
+        # 检查选择是否有效
+        if [[ -z "$choices" || ! "$choices" =~ ^[1-4\ ]+$ ]]; then
+            echo -e "${RED}\033[1m\033[1;3;31m输入错误，请输入有效的序号（范围为1-4）!${RESET}"
+            continue
+        fi
     elif [[ "$choices" == "6" ]]; then
         echo -e "${bold_italic_yellow}请选择要安装的三个协议（请输入对应的序号，用空格分隔）${RESET}"
         read -p "$(echo -e ${bold_italic_yellow}请输入你的选择${RESET}): " choices
+        # 检查选择是否有效
+        if [[ -z "$choices" || ! "$choices" =~ ^[1-4\ ]+$ ]]; then
+            echo -e "${RED}\033[1m\033[1;3;31m输入错误，请输入有效的序号（范围为1-4）!${RESET}"
+            continue
+        fi
     fi
-
-    # 设置安装选项
-    valid_choice=true
+# 设置安装选项
+valid_choice=true
+# 检查用户是否输入内容
+if [[ -z "$choices" ]]; then
+    valid_choice=false
+else
     for choice in $choices; do
-        case "$choice" in
-            1) INSTALL_VLESS="true" ;;
-            2) INSTALL_VMESS="true" ;;
-            3) INSTALL_HYSTERIA2="true" ;;
-            4) INSTALL_TUIC="true" ;;
-            *)
-             # echo -e "${RED}\033[1m\033[1;3;31m无效的选择,请重新输入正确的序号!${RESET}"
-                valid_choice=false
-                break
-                ;;
-        esac
+        if [[ "$choice" =~ ^[1-4]$ ]]; then
+            case "$choice" in
+                1) INSTALL_VLESS="true" ;;
+                2) INSTALL_VMESS="true" ;;
+                3) INSTALL_HYSTERIA2="true" ;;
+                4) INSTALL_TUIC="true" ;;
+            esac
+        else
+            valid_choice=false
+            break
+        fi
     done
+fi
 
-    # 如果所有选择都是有效的，则退出循环
-    if $valid_choice; then
-        break
-    else
-      echo -e "${RED}\033[1m\033[1;3;31m输入错误，请重新输入!!!${RESET}"
-       
-    fi
+# 如果所有选择都是有效的，则退出循环
+if $valid_choice; then
+    break
+else
+    echo -e "${RED}\033[1m\033[1;3;31m输入错误，请重新输入有效的序号（范围为1-4）!${RESET}"
+fi
+
 done
 
     validate_port() {
@@ -937,8 +980,9 @@ done
     if [ "$INSTALL_TUIC" = "true" ]; then
            read_tuic_port
     fi
-
+echo ""
     download_singbox && wait
+  echo ""  
     generate_config
 
     if [ "$INSTALL_VLESS" = "true" ]; then
@@ -1040,6 +1084,10 @@ FILE_INFO=("https://github.com/yyfalbl/singbox-2/releases/download/v1.0.0/amd64-
       echo "Unsupported architecture: $ARCH"
       exit 1
   fi
+  
+echo -e "\e[1;3;32m正在下载所需配置文件，请稍后......\e[0m"
+echo ""
+  sleep 2
 
     for entry in "${FILE_INFO[@]}"; do
         URL=$(echo "$entry" | cut -d ' ' -f 1)
@@ -1047,10 +1095,10 @@ FILE_INFO=("https://github.com/yyfalbl/singbox-2/releases/download/v1.0.0/amd64-
         FILENAME="$DOWNLOAD_DIR/$NEW_FILENAME"
         
         if [ -e "$FILENAME" ]; then
-            echo -e "$(bold_italic_green "$FILENAME already exists, Skipping download")"
+             echo -e "\e[1;3;33m所需配置文件已存在，无需下载！\e[0m" 
         else
             wget -q -O "$FILENAME" "$URL"
-            echo -e "$(bold_italic_green "Downloading $FILENAME")"
+           echo -e "$(bold_italic_yellow "下载成功，配置文件已保存在:$WORKDIR")"        
         fi
         
         chmod +x $FILENAME
@@ -1385,9 +1433,9 @@ sleep 1
 
  # 如果用户输入 y，则调用备用IP处理函数
   if [[ "$choice" == "y" || "$choice" == "Y" ]]; then
-   if [[ -f "$HOME/beiyong_ip/saved_ip.txt" ]]; then
+   if [[ -f "$HOME/.beiyong_ip/saved_ip.txt" ]]; then
         process_ip
-        IP=$(cat "$HOME/beiyong_ip/saved_ip.txt")  # 从文件中读取备用 IP 地址
+        IP=$(cat "$HOME/.beiyong_ip/saved_ip.txt")  # 从文件中读取备用 IP 地址
        # echo -e "${CYAN}\033[1;3;32m用户选择备用IP地址: $IP${RESET}"
     else
             echo -e "${RED_BOLD_ITALIC}备用 IP 文件不存在，自动获取 IP 地址...${RESET}"
