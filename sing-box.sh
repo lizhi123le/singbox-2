@@ -21,184 +21,47 @@ bold_italic_purple() { echo -e "${bold_purple}\033[3m$1${reset}"; }
 # 设置工作目录
 WORKDIR="$HOME/sbox"
 
-# 定义配置文件路径
-password_file="$HOME/beiyong_ip/.panel_password"
-panel_number_file="$HOME/beiyong_ip/.panel_number"
+# 备用ip获取函数
+beiyong_ip() {
+# 获取 netstat -i 输出并提取以 mail 开头的 IP 地址
+ip_addresses=$(netstat -i | awk '/^ixl.*mail[0-9]+/ {print $3}' | cut -d '/' -f 1)
+# 输出提取的 IP 地址
+echo -e "\033[1;32;3m当前服务器备用 IP 地址: $ip_addresses\033[0m"
 
-# 定义函数来检查密码是否存在
-get_password() {
-    # 如果密码文件存在，读取密码
-    if [[ -f "$password_file" ]]; then
-        password=$(cat "$password_file")
-        [[ -z "$password" ]] && unset password
-    fi
-
-    if [[ -z "$password" ]]; then
-        # 如果密码文件不存在或内容为空，提示用户输入密码并保存
-        echo -ne "\033[1;3;33m请输入登录panel面板的密码(填不填谁便你,直接按Enter键): \033[0m"  # 黄色斜体加粗，不换行
-        read -r password  # 不隐藏输入
-        # 将密码保存到文件中
-        echo "$password" > "$password_file"
-        chmod 600 "$password_file"  # 确保只有用户自己能读写这个文件
-    fi
-}
-
-# 动态设置 login_url，基于当前服务器的 panel 号
-get_login_url() {
-    if [[ -f "$panel_number_file" ]]; then
-        panel_number=$(cat "$panel_number_file")
-        [[ -z "$panel_number" ]] && unset panel_number
-    fi
-
-    echo -ne "\033[1;3;33m请选择面板域名(注:此提示只会显示一次,获取备用IP):\n1) serv00.com\n2) ct8.pl\n请输入选择 (1/2): \033[0m"  # 黄色斜体加粗，不换行
-    read -r choice
-
-    case "$choice" in
-        1)
-            if [[ -z "$panel_number" ]]; then
-                echo -ne "\033[1;3;33m请输入panel面板编号 (必须输入panel后面的数字...): \033[0m"  # 黄色斜体加粗，不换行
-                read -r panel_number
-                echo "$panel_number" > "$panel_number_file"
-                chmod 600 "$panel_number_file"
-            fi
-            login_url="https://panel${panel_number}.serv00.com/login"
-            target_url="https://panel${panel_number}.serv00.com/ssl/www"
-            ;;
-
-        2)
-            login_url="https://panel.ct8.pl/login/"
-            target_url="https://panel.ct8.pl/ssl/www"
-            # 这里不保存 panel_number，因为域名固定
-            rm -f "$panel_number_file"
-            ;;
-
-        *)
-            echo -e "\033[1;3;31m无效选择，请重新运行脚本。\033[0m"  # 红色斜体加粗
-            exit 1
-            ;;
-    esac
-
-    echo -e "\033[1;3;33m当前登录 URL: ${login_url}\033[0m"  # 调试输出
-}
-
-# 定义主函数
-process_ip() {
-    RED_BOLD_ITALIC='\033[1;3;31m'  # 红色加粗斜体
-    GREEN_BOLD_ITALIC='\033[1;3;32m'  # 绿色加粗斜体
-    RESET='\033[0m'  # 重置颜色
-
-    local base_dir="$HOME/.beiyong_ip"
-    local log_file="$base_dir/wget_log.txt"
-    local cookies_file="$base_dir/cookies.txt"
-    local ip_address=""
-    local ip_file="$base_dir/saved_ip.txt"
-
-    # 确保 base_dir 目录存在
-    if [[ ! -d "$base_dir" ]]; then
-        mkdir -p "$base_dir"
-    fi
-
-    # 检查是否已有保存的 IP 地址
-    if [[ -f "$ip_file" && -s "$ip_file" ]]; then
-        ip_address=$(cat "$ip_file")
-        echo -e "${GREEN_BOLD_ITALIC}当前服务器备用 IP 地址: ${ip_address}${RESET}"
-        return  # 已有 IP 地址则直接返回
-    fi
-
-    # 自动获取当前用户名
-    username=$(whoami)
-
-    # 获取登录 URL
-    get_login_url
-
-    # 获取密码
-    get_password
-
-    # 登录循环，直到登录成功或用户选择不再尝试
-    while true; do
-        # 执行登录请求并记录日志，错误输出重定向到文件
-        wget -S --save-cookies "$cookies_file" --keep-session-cookies --post-data "username=$username&password=$password" "$login_url" -O /dev/null 2> "$log_file"
-        
-        # 检查是否登录成功
-        if grep -q "HTTP/.* 200 OK" "$log_file" || grep -q "HTTP/.* 302 Found" "$log_file"; then
-            # 如果成功，进行后续操作
-            wget -S --load-cookies "$cookies_file" -O /dev/null "$target_url" 2>> "$log_file"
-            
-            # 提取 IP 地址并保存
-            ip_address=$(awk '/\.\.\./ {getline; print}' "$log_file" | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' | sort | uniq | head -n 1)
-            
-            if [[ -n "$ip_address" ]]; then
-                echo -e "${GREEN_BOLD_ITALIC}服务器备用 IP 地址: ${ip_address}${RESET}"
-                echo "$ip_address" > "$ip_file"
-                break
-            else
-                echo "没有提取到 IP 地址"
-                rm -f "$cookies_file"
-                return
-            fi
-        else
-            if [[ "$login_url" == *"ct8.pl"* ]]; then
-                # 仅在 ct8.pl 时，不显示任何错误信息，只尝试提取 IP
-                # 提取 IP 地址并保存
-                ip_address=$(awk '/\.\.\./ {getline; print}' "$log_file" | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' | sort | uniq | head -n 1)
-                
-                if [[ -n "$ip_address" ]]; then
-                    echo -e "${GREEN_BOLD_ITALIC}服务器备用 IP 地址: ${ip_address}${RESET}"
-                    echo "$ip_address" > "$ip_file"
-                else
-                    echo "没有提取到 IP 地址"
-                fi
-                return
-            else
-                # 显示错误信息并提示是否重新登录
-                echo -e "${RED_BOLD_ITALIC}登录失败，请检查用户名或密码！${RESET}"
-                echo "登录失败，保留日志文件和其他数据进行调试"
-
-                # 提示用户是否重新尝试登录
-                echo -n -e "\033[1;3;33m是否重新登录？（y/n）:\033[0m"
-                read -r choice
-                if [[ "$choice" =~ ^[Nn]$ ]]; then
-                    exit 1
-                else
-                    get_login_url
-                    get_password
-                fi
-            fi
-        fi
-    done
 }
 
 # 清理所有文件和进程的函数
 cleanup_and_delete() {
     local target_dir="$HOME"
-    local exclude_dirs=("backups" ".beiyong_ip")  # 要排除的目录名称数组
+    local exclude_dir="backups"  # 要排除的目录名称
 
     # 检查目录是否存在
     if [ -d "$target_dir" ]; then
-        echo -n -e "\033[1;3;31m准备删除所有文件...\033[0m\n"
-       sleep 3
-        # 构建排除条件
-        local exclude_pattern=""
-        for dir in "${exclude_dirs[@]}"; do
-            exclude_pattern+="! -name $dir "
-        done
+        echo -n -e "\033[1;3;31m准备删除所有文件，保留 $exclude_dir 目录...\033[0m\n"
+        sleep 3
+
+        # 交互确认
+        read -p "您确定要删除目录 $target_dir 中的所有文件吗？(y/n): " confirmation
+        if [[ "$confirmation" != "y" ]]; then
+            echo "操作已取消。"
+            return
+        fi
 
         # 删除除排除目录以外的所有内容
-        eval "find \"$target_dir\" -mindepth 1 -maxdepth 1 $exclude_pattern-exec rm -rf {} + 2>/dev/null"
+        find "$target_dir" -mindepth 1 -maxdepth 1 ! -name "$exclude_dir" -exec rm -rf {} +
 
         # 检查删除是否成功
-        local remaining_items=$(find "$target_dir" -mindepth 1 -maxdepth 1 | grep -v "${exclude_dirs[0]}" | grep -v "${exclude_dirs[1]}")
-        if [ -d "$target_dir/${exclude_dirs[0]}" ] && [ -d "$target_dir/${exclude_dirs[1]}" ] && [ -z "$remaining_items" ]; then
-            echo -n -e "\033[1;3;31m所有文件已成功删除!\033[0m\n"
+        local remaining_items=$(find "$target_dir" -mindepth 1 -maxdepth 1 | grep -v "$exclude_dir")
+        if [ -d "$target_dir/$exclude_dir" ] && [ -z "$remaining_items" ]; then
+            echo -n -e "\033[1;3;31m所有文件已成功删除，保留 $exclude_dir 目录!\033[0m\n"
             echo ""
         else
-            echo "目录 $target_dir 删除时出现问题，请检查是否有权限问题或其他错误。"
+            echo "删除操作出现问题，请检查是否有权限问题或其他错误。"
         fi
     else
         echo "目录 $target_dir 不存在。"
     fi
 }
-
 get_server_info() {
     # 颜色变量
     CYAN="\033[1;36m"
@@ -217,7 +80,8 @@ get_server_info() {
     fi
 
     # 尝试获取 IPv4 地址，如果失败则尝试获取 IPv6 地址
-    IP=$(curl -s --max-time 3 ipv4.ip.sb)
+    IP=$(curl -s --max-time 3 ifconfig.me)
+
     if [[ -z "$IP" ]]; then
         # 如果没有获取到 IPv4 地址，尝试获取 IPv6 地址
         IP=$(curl -s --max-time 3 ipv6.ip.sb)
@@ -239,11 +103,11 @@ get_server_info() {
     if [[ "$current_fqdn" == *.serv00.com ]]; then
         echo -e "${GREEN_BOLD_ITALIC}当前服务器主机地址是：$current_fqdn${RESET}"
          echo -e "${YELLOW_BOLD_ITALIC}本机域名是: $user.serv00.net${RESET}"
-        process_ip
+       beiyong_ip
     elif [[ "$current_fqdn" == *.ct8.pl ]]; then
         echo -e "${GREEN_BOLD_ITALIC}当前服务器主机地址是：$current_fqdn${RESET}"
      echo -e "${YELLOW_BOLD_ITALIC}本机域名是: $user.s1.ct8.pl${RESET}"
-        process_ip
+        beiyong_ip
     else
         echo -e "${CYAN}当前域名不属于 serv00.com 或 ct8.pl 域。${RESET}"
     fi
@@ -1433,19 +1297,10 @@ sleep 1
 
  # 如果用户输入 y，则调用备用IP处理函数
   if [[ "$choice" == "y" || "$choice" == "Y" ]]; then
-   if [[ -f "$HOME/.beiyong_ip/saved_ip.txt" ]]; then
-        process_ip
-        IP=$(cat "$HOME/.beiyong_ip/saved_ip.txt")  # 从文件中读取备用 IP 地址
-       # echo -e "${CYAN}\033[1;3;32m用户选择备用IP地址: $IP${RESET}"
-    else
-            echo -e "${RED_BOLD_ITALIC}备用 IP 文件不存在，自动获取 IP 地址...${RESET}"
-            # 自动获取 IP 地址 (首先检测IPv4，如果失败，则尝试IPv6)
-            IP=$(curl -s ipv4.ip.sb || { ipv6=$(curl -s --max-time 1 ipv6.ip.sb); echo "[$ipv6]"; })
-            echo -e "${CYAN}\033[1;3;32m自动获取的设备IP地址是: $IP${RESET}"
-        fi
+      IP=$(netstat -i | awk '/^ixl.*mail[0-9]+/ {print $3}' | cut -d '/' -f 1)
     else
         # 自动检测IP地址 (首先检测IPv4，如果失败，则尝试IPv6)
-        IP=$(curl -s ipv4.ip.sb || { ipv6=$(curl -s --max-time 1 ipv6.ip.sb); echo "[$ipv6]"; })
+        IP=$(curl -s ifconfig.me || { ipv6=$(curl -s --max-time 1 ipv6.ip.sb); echo "[$ipv6]"; })
         echo -e "${CYAN}\033[1;3;32m自动检测的设备IP地址是: $IP${RESET}"
     fi
     
