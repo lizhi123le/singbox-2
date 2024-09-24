@@ -17,35 +17,176 @@ bold_italic_red() { echo -e "${bold_red}\033[3m$1${reset}"; }
 bold_italic_green() { echo -e "${bold_green}\033[3m$1${reset}"; }
 bold_italic_yellow() { echo -e "${bold_yellow}\033[3m$1${reset}"; }
 bold_italic_purple() { echo -e "${bold_purple}\033[3m$1${reset}"; }
-
+ RED_BOLD_ITALIC='\033[1;3;31m'  # 红色加粗斜体
+    GREEN_BOLD_ITALIC='\033[1;3;32m'  # 绿色加粗斜体
+    RESET='\033[0m'  # 重置颜色
 # 设置工作目录
 WORKDIR="$HOME/sbox"
+password_file="$HOME/.beiyong_ip/.panel_password"
+base_dir="$HOME/.beiyong_ip"
+log_file="$base_dir/wget_log.txt"
+ip_file="$base_dir/saved_ip.txt"
+saved_ip=$(cat "$HOME/.serv00_ip" 2>/dev/null)
+ip_address=""
 
+
+# 定义函数来检查密码是否存在
+get_password() {
+    # 如果密码文件存在，读取密码
+    if [[ -f "$password_file" ]]; then
+        password=$(cat "$password_file")
+        [[ -z "$password" ]] && unset password
+    fi
+
+    if [[ -z "$password" ]]; then
+        # 如果密码文件不存在或内容为空，提示用户输入密码并保存
+        echo -ne "\033[1;3;33m请输入登录panel面板的密码(填不填谁便你,直接按Enter键): \033[0m"  # 黄色斜体加粗，不换行
+        read -r password  # 不隐藏输入
+        # 将密码保存到文件中
+        echo "$password" > "$password_file"
+        chmod 600 "$password_file"  # 确保只有用户自己能读写这个文件
+    fi
+}
+
+# 动态设置 login_url，基于当前服务器的 panel 号
+get_login_url() {
+    # 直接设置面板地址
+    login_url="https://panel.ct8.pl/login/"
+    target_url="https://panel.ct8.pl/ssl/www"
+
+    echo -e "\033[1;3;33m当前登录 URL: ${login_url}\033[0m"  # 调试输出
+}
+
+# 定义主函数
+process_ct8() {
+   
+    # 确保 base_dir 目录存在
+    if [[ ! -d "$base_dir" ]]; then
+        mkdir -p "$base_dir"
+    fi
+
+    # 检查是否已有保存的 IP 地址
+    if [[ -f "$ip_file" && -s "$ip_file" ]]; then
+        ip_address=$(cat "$ip_file")
+        echo -e "${GREEN_BOLD_ITALIC}当前服务器备用 IP 地址: ${ip_address}${RESET}"
+        return  # 已有 IP 地址则直接返回
+    fi
+
+    # 自动获取当前用户名
+    username=$(whoami)
+
+    # 获取登录 URL
+    get_login_url
+
+    # 获取密码
+    get_password
+
+    # 登录循环，直到登录成功或用户选择不再尝试
+    while true; do
+        # 执行登录请求并记录日志，错误输出重定向到文件
+        wget -S --save-cookies "$cookies_file" --keep-session-cookies --post-data "username=$username&password=$password" "$login_url" -O /dev/null 2> "$log_file"
+        
+        # 检查是否登录成功
+        if grep -q "HTTP/.* 200 OK" "$log_file" || grep -q "HTTP/.* 302 Found" "$log_file"; then
+            # 如果成功，进行后续操作
+            wget -S --load-cookies "$cookies_file" -O /dev/null "$target_url" 2>> "$log_file"
+            
+            # 提取 IP 地址并保存
+            ip_address=$(awk '/\.\.\./ {getline; print}' "$log_file" | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' | sort | uniq | head -n 1)
+            
+            if [[ -n "$ip_address" ]]; then
+                echo -e "${GREEN_BOLD_ITALIC}服务器备用 IP 地址: ${ip_address}${RESET}"
+                echo "$ip_address" > "$ip_file"
+                break
+            else
+                echo "没有提取到 IP 地址"
+                rm -f "$cookies_file"
+                return
+            fi
+        else
+            if [[ "$login_url" == *"ct8.pl"* ]]; then
+                # 仅在 ct8.pl 时，不显示任何错误信息，只尝试提取 IP
+                # 提取 IP 地址并保存
+                ip_address=$(awk '/\.\.\./ {getline; print}' "$log_file" | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' | sort | uniq | head -n 1)
+                
+                if [[ -n "$ip_address" ]]; then
+                    echo -e "${GREEN_BOLD_ITALIC}服务器备用 IP 地址: ${ip_address}${RESET}"
+                    echo "$ip_address" > "$ip_file"
+                else
+                    echo "没有提取到 IP 地址"
+                fi
+                return
+            else
+                # 显示错误信息并提示是否重新登录
+                echo -e "${RED_BOLD_ITALIC}登录失败，请检查用户名或密码！${RESET}"
+                echo "登录失败，保留日志文件和其他数据进行调试"
+
+                # 提示用户是否重新尝试登录
+                echo -n -e "\033[1;3;33m是否重新登录？（y/n）:\033[0m"
+                read -r choice
+                if [[ "$choice" =~ ^[Nn]$ ]]; then
+                    exit 1
+                else
+                    get_login_url
+                    get_password
+                fi
+            fi
+        fi
+    done
+}
 # 备用ip获取函数
 beiyong_ip() {
-# 获取 netstat -i 输出并提取以 mail 开头的 IP 地址
-ip_addresses=$(netstat -i | awk '/^ixl.*mail[0-9]+/ {print $3}' | cut -d '/' -f 1)
-# 输出提取的 IP 地址
-echo -e "\033[1;32;3m当前服务器备用 IP 地址: $ip_addresses\033[0m"
+    # 检查是否已保存 IP 地址
+    if [[ -f "$HOME/.serv00_ip" ]]; then
+        saveda_ip=$(cat "$HOME/.serv00_ip")
+        echo -e "\033[1;32;3m当前服务器备用 IP 地址: $saveda_ip\033[0m"  # 绿色输出
+        return
+    fi
 
+    # 检查服务器类型
+    if [[ "$(hostname -d)" == "ct8.pl" ]]; then
+        echo -e "\033[1;33m检测到 ct8.pl 服务器，正在调用 process_ct8 函数...\033[0m"  # 黄色输出
+        process_ct8  # 调用 process_ct8 函数
+    else
+        # 获取 netstat -i 输出并提取以 mail 开头的 IP 地址
+        ip_addresses=$(netstat -i | awk '/^ixl.*mail[0-9]+/ {print $3}' | cut -d '/' -f 1)
+
+        # 检查是否提取到 IP 地址
+        if [[ -z "$ip_addresses" ]]; then
+            echo -e "\033[1;31m没有找到备用 IP 地址，正在调用 process_ct8 函数...\033[0m"  # 红色输出
+            process_ct8  # 调用 process_ct8 函数
+        else
+            # 保存提取的 IP 地址到文件
+            echo "$ip_addresses" > "$HOME/.serv00_ip" || {
+                echo -e "\033[1;31m无法写入 IP 地址文件！\033[0m"  # 红色输出
+                return 1
+            }
+            # 立即读取并输出保存的 IP 地址
+            echo -e "\033[1;32;3m当前服务器备用 IP 地址: $ip_addresses\033[0m"  # 绿色输出
+        fi
+    fi
 }
 
 # 清理所有文件和进程的函数
 cleanup_and_delete() {
     local target_dir="$HOME"
-    local exclude_dir="backups"  # 要排除的目录名称
+    local exclude_dir="backups"
 
-    # 检查目录是否存在
     if [ -d "$target_dir" ]; then
-        echo -n -e "\033[1;3;31m准备删除所有文件，保留 $exclude_dir 目录...\033[0m\n"
-        sleep 3
+        echo -n -e "\033[1;3;33m准备删除所有文件并清理进程，请稍后...\033[0m\n"
+        sleep 2
 
-        # 交互确认
-        read -p "您确定要删除目录 $target_dir 中的所有文件吗？(y/n): " confirmation
-        if [[ "$confirmation" != "y" ]]; then
-            echo "操作已取消。"
+        read -p "$(echo -e "\033[1;3;33m您确定要删除所有文件吗？(y/n Enter默认y): \033[0m")" confirmation
+        confirmation=${confirmation:-y}
+        sleep 2
+        
+        if [[ "$confirmation" != "y" && "$confirmation" != "Y" ]]; then
+            echo -e "\033[1;3;32m操作已取消。\033[0m"
             return
         fi
+
+        # 终止当前用户的所有进程
+        pkill -u $(whoami)
 
         # 删除除排除目录以外的所有内容
         find "$target_dir" -mindepth 1 -maxdepth 1 ! -name "$exclude_dir" -exec rm -rf {} +
@@ -53,8 +194,8 @@ cleanup_and_delete() {
         # 检查删除是否成功
         local remaining_items=$(find "$target_dir" -mindepth 1 -maxdepth 1 | grep -v "$exclude_dir")
         if [ -d "$target_dir/$exclude_dir" ] && [ -z "$remaining_items" ]; then
-            echo -n -e "\033[1;3;31m所有文件已成功删除，保留 $exclude_dir 目录!\033[0m\n"
-            echo ""
+            echo -n -e "\033[1;3;31m所有文件已成功删除!\033[0m\n"
+            exit 0
         else
             echo "删除操作出现问题，请检查是否有权限问题或其他错误。"
         fi
@@ -62,6 +203,7 @@ cleanup_and_delete() {
         echo "目录 $target_dir 不存在。"
     fi
 }
+
 get_server_info() {
     # 颜色变量
     CYAN="\033[1;36m"
@@ -103,22 +245,22 @@ get_server_info() {
     if [[ "$current_fqdn" == *.serv00.com ]]; then
         echo -e "${GREEN_BOLD_ITALIC}当前服务器主机地址是：$current_fqdn${RESET}"
          echo -e "${YELLOW_BOLD_ITALIC}本机域名是: $user.serv00.net${RESET}"
-       beiyong_ip
+     beiyong_ip
     elif [[ "$current_fqdn" == *.ct8.pl ]]; then
         echo -e "${GREEN_BOLD_ITALIC}当前服务器主机地址是：$current_fqdn${RESET}"
      echo -e "${YELLOW_BOLD_ITALIC}本机域名是: $user.s1.ct8.pl${RESET}"
-        beiyong_ip
+        process_ct8
     else
         echo -e "${CYAN}当前域名不属于 serv00.com 或 ct8.pl 域。${RESET}"
     fi
 }
 
-# Function to check if sing-box is installed
+# 检查sing-box运行
 check_singbox_installed() {
     if [ -e "$HOME/sbox/web" ]; then
-        echo -e "$(bold_italic_green "欢迎使用sing-box !!!")"
+        echo -e "$(bold_italic_green "欢迎使用SINGBOX服务")"
     else
-        echo -e "$(bold_italic_red "sing-box未安装!")"
+        echo -e "$(bold_italic_red "sing-box当前未安装!")"
     fi
 }
 
@@ -127,7 +269,7 @@ check_web_status() {
     if pgrep -x "web" > /dev/null; then
         echo -e "$(bold_italic_green "sing-box Running！")"
     else
-        echo -e "$(bold_italic_red "sing-box Not running")"
+        echo -e "$(bold_italic_red "sing-boxNotRunning")"
     fi
 }
 
@@ -1296,13 +1438,32 @@ sleep 1
   read -p "$(echo -e "${CYAN}\033[1;3;33m是否启用备用IP地址（输入y确认，否则按Enter键自动检测）: ${RESET}") " choice
 
  # 如果用户输入 y，则调用备用IP处理函数
-  if [[ "$choice" == "y" || "$choice" == "Y" ]]; then
-      IP=$(netstat -i | awk '/^ixl.*mail[0-9]+/ {print $3}' | cut -d '/' -f 1)
+if [[ "$choice" == "y" || "$choice" == "Y" ]]; then
+    # 获取 IP 地址
+    IP=$(netstat -i | awk '/^ixl.*mail[0-9]+/ {print $3}' | cut -d '/' -f 1)
+    
+    if [[ -z "$IP" ]]; then
+      #  echo -e "${RED}\033[1;31m未找到备用 IP 地址，尝试从 saved_ip.txt 提取...\033[0m"
+        # 尝试从 saved_ip.txt 中提取 IP 地址
+        if [[ -f "$ip_file" ]]; then
+            IP=$(cat "$ip_file")
+            if [[ -z "$IP" ]]; then
+                echo -e "${RED}\033[1;31m从 saved_ip.txt 中未找到 IP 地址。\033[0m"
+            else
+                echo -e "${GREEN}\033[1;32m服务器备用 IP 地址是: $IP${RESET}"
+            fi
+        else
+            echo -e "${RED}\033[1;31msaved_ip.txt 文件不存在。\033[0m"
+        fi
     else
-        # 自动检测IP地址 (首先检测IPv4，如果失败，则尝试IPv6)
-        IP=$(curl -s ifconfig.me || { ipv6=$(curl -s --max-time 1 ipv6.ip.sb); echo "[$ipv6]"; })
-        echo -e "${CYAN}\033[1;3;32m自动检测的设备IP地址是: $IP${RESET}"
+        echo -e "${GREEN}\033[1;32m找到的备用 IP 地址是: $IP${RESET}"
     fi
+else
+    # 自动检测 IP 地址 (首先检测 IPv4，如果失败，则尝试 IPv6)
+    IP=$(curl -s ifconfig.me || { ipv6=$(curl -s --max-time 1 ipv6.ip.sb); echo "[$ipv6]"; })
+    echo -e "${CYAN}\033[1;3;32m自动检测的设备 IP 地址是: $IP${RESET}"
+fi
+
     
 current_fqdn=$(hostname -f)
 
@@ -1457,7 +1618,7 @@ stop_web() {
         kill -9 $WEB_PID
         echo -n -e "\033[1;3;31m已成功停止 WEB 进程!\033[0m\n"
     else
-        echo "未找到 web 进程，可能已经停止。"
+        echo -n -e "\033[1;3;31m未找到WEB进程，可能已经停止了!\033[0m\n"
     fi
 
     # 查找 bot 进程的 PID
@@ -1569,30 +1730,40 @@ menu() {
      while true; do
         clear
    echo ""
-   magenta "=== SERV00和CT8|SING-BOX一键安装脚本 ==="
+   magenta "=== 欢迎使用SERV00和CT8|SING-BOX一键安装脚本 ==="
    echo ""
-  bold_italic_orange "\033[1;3m=== 脚本支持:VLESS VMESS HY2 TUIC socks5 协议，UUID自动生成 ===\033[0m\n"
-    magenta "=== 支持安装：单，双，三个协议(面板最多只能开放3个端口)，自由选择 ===\n"
-  bold_italic_light_blue "=== 固定argo隧道 可以优选ip或优选域名！  ===\n"
-    bold_italic_light_blue "=== argo隧道配置文件生成网址  https://fscarmen.cloudflare.now.cc/ ===\n"
-  echo -e "${green}\033[1;3;33m脚本地址：\033[0m${re}\033[1;3;33mhttps://github.com/yyfalbl/singbox-2\033[0m${re}\n"
-   purple "\033[1;3m*****转载请著名出处，请勿滥用*****\033[0m\n"
-   echo ""  
+    bold_italic_orange "\033[1;3m=== 脚本支持:VLESS VMESS HY2 TUIC socks5 协议，UUID自动生成 ===\033[0m"
+    magenta "=== 支持安装：单，双，三个协议(面板最多只能开放3个端口)，自由选择 ==="
+    bold_italic_light_blue "=== 固定argo隧道 可以优选ip或优选域名！  ==="
+    bold_italic_light_blue "=== argo隧道配置文件生成网址  https://fscarmen.cloudflare.now.cc/ ==="
+    echo -e "${green}\033[1;3;33m脚本地址：\033[0m${re}\033[1;3;33mhttps://github.com/yyfalbl/singbox-2\033[0m${re}\n"
+    purple "\033[1;3m*****转载请著名出处，请勿滥用*****\033[0m"
+    echo ""  
     get_server_info
-    echo ""
-   # Example usage
-   check_singbox_installed
-   echo ""
-   # 显示 web 进程状态（仅在 sing-box 已安装时显示）
-   echo ""  # 添加空行
-   check_web_status
-   echo ""  # 添加空行
+  echo ""
+# 设置正方形大小
+size=8
+content1=$(check_singbox_installed)  # 调用第一个函数获取内容
+content2=$(check_web_status)  # 调用第二个函数获取内容
 
-   echo ""
+# 固定宽度
+max_width=30
 
+for ((i=0; i<size; i++)); do
+    if [[ $i -eq 0 || $i -eq $((size-1)) ]]; then
+        echo -e "\033[1;33m=============================\033[0m"
+    elif [[ $i -eq 3 ]]; then
+        printf "||   %-34s   ||\n" "$content1"  # 第一行内容左对齐，固定宽度
+    elif [[ $i -eq 5 ]]; then
+        printf "||   %-28s    ||\n" "$content2"  # 第二行内容左对齐，固定宽度
+    else
+        echo -e "\033[1;33m||                         ||\033[0m"  # 中间部分
+    fi
+done
+   echo ""
    green "\033[1;3m1. 安装sing-box\033[0m"
    echo "==============="
-   green "\033[1;3m2. 安装Socks5\033[0m"
+   echo -e "\033[1;3;32m2. 安装Socks5\033[0m\033[1;3;33m(谨慎安装!)\033[0m"
    echo "==============="
    red "\033[1;3m3. 卸载所有程序\033[0m"
    echo "==============="
