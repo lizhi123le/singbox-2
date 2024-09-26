@@ -17,9 +17,10 @@ bold_italic_red() { echo -e "${bold_red}\033[3m$1${reset}"; }
 bold_italic_green() { echo -e "${bold_green}\033[3m$1${reset}"; }
 bold_italic_yellow() { echo -e "${bold_yellow}\033[3m$1${reset}"; }
 bold_italic_purple() { echo -e "${bold_purple}\033[3m$1${reset}"; }
- RED_BOLD_ITALIC='\033[1;3;31m'  # 红色加粗斜体
-    GREEN_BOLD_ITALIC='\033[1;3;32m'  # 绿色加粗斜体
-    RESET='\033[0m'  # 重置颜色
+RED_BOLD_ITALIC='\033[1;3;31m'  
+GREEN_BOLD_ITALIC='\033[1;3;32m'  
+RESET='\033[0m'  
+
 # 设置工作目录
 WORKDIR="$HOME/sbox"
 password_file="$HOME/.beiyong_ip/.panel_password"
@@ -28,8 +29,8 @@ log_file="$base_dir/wget_log.txt"
 ip_file="$base_dir/saved_ip.txt"
 saved_ip=$(cat "$HOME/.serv00_ip" 2>/dev/null)
 ip_address=""
-
-
+FINAL_IP=""
+    
 # 定义函数来检查密码是否存在
 get_password() {
     # 如果密码文件存在，读取密码
@@ -303,12 +304,13 @@ setup_socks5() {
 
   # 提示用户输入IP地址（或按回车自动检测）
   read -p "$(echo -e "${CYAN}请输入IP地址（或按回车自动检测）: ${RESET}") " user_ip
+  get_ip
 
   # 如果用户输入了IP地址，使用用户提供的IP地址，否则自动检测
   if [ -n "$user_ip" ]; then
       IP="$user_ip"
   else
-      IP=$(curl -s ipv4.ip.sb || { ipv6=$(curl -s --max-time 1 ipv6.ip.sb); echo "[$ipv6]"; })
+      IP=$FINAL_IP
   fi
 
   # 输出最终使用的IP地址和域名
@@ -815,14 +817,14 @@ start_service() {
     return
   fi
 
-  devil binexec on > /dev/null 2>&1 
+  devil binexec on > /dev/null 2>&1
   if [ $? -eq 0 ]; then
     echo -e "\e[32;1;3m=== Enabled 已为你自动已开启===  \e[33;1;3m注意：第一次开启Enabled后，请重启服务器后生效，切记！！！\e[0m"
     touch "$HOME/.enabled_flag"  # 创建标志文件
   else
     echo -e "\e[31m\e[3m\e[1mEnabled未开启，请尝试手动开启.\e[0m"  # 红色斜体加粗输出
   fi
-} 
+}
 #安装sing-box
 install_singbox() {
 bold_italic_red='\033[1;3;31m'
@@ -1008,9 +1010,9 @@ echo ""
     fi
 
     # 运行 sing-box
-    run_sb && sleep 3
-
-    # 获取链接
+   get_ip
+   generate_config
+   run_sb && sleep 3
     get_links
     
     # 仅在 Argo 配置存在时显示 ArgoDomain 信息
@@ -1101,7 +1103,7 @@ echo ""
         FILENAME="$DOWNLOAD_DIR/$NEW_FILENAME"
         
         if [ -e "$FILENAME" ]; then
-             echo -e "\e[1;3;33m所需配置文件已存在，无需下载！\e[0m" 
+             echo -e "\e[1;3;33m所需配置文件已存在，无需下载！\e[0m"
         else
             wget -q -O "$FILENAME" "$URL"
            echo -e "$(bold_italic_yellow "下载成功，配置文件已保存在:$WORKDIR")"        
@@ -1183,7 +1185,7 @@ EOF
     {
       "tag": "vless-reality-version",
       "type": "vless",
-      "listen": "::",
+      "listen": "$FINAL_IP",
       "listen_port": $vless_port,
       "users": [
         {
@@ -1216,7 +1218,7 @@ EOF
     {
       "tag": "vmess-ws-in",
       "type": "vmess",
-      "listen": "::",
+      "listen": "$FINAL_IP",
       "listen_port": $vmess_port,
       "users": [
         {
@@ -1240,7 +1242,7 @@ EOF
     {
       "tag": "hysteria-in",
       "type": "hysteria2",
-      "listen": "$IP",
+      "listen": "$FINAL_IP",
       "listen_port": $hy2_port,
       "users": [
         {
@@ -1266,7 +1268,7 @@ EOF
     {
       "tag": "tuic-in",
       "type": "tuic",
-      "listen": "$IP",
+      "listen": "$FINAL_IP",
       "listen_port": $tuic_port,
       "users": [
         {
@@ -1416,6 +1418,35 @@ run_sb() {
     pgrep -x "bot" > /dev/null && green "BOT is running" || { red "bot is not running, restarting..."; pkill -x "bot" && nohup $WORKDIR/bot "${args}" >/dev/null 2>&1 & sleep 2; purple "bot restarted"; }
   fi
 }
+  # 获取ip
+get_ip() {
+    read -p "$(echo -e "${CYAN}\033[1;3;33m是否启用备用IP地址（输入y确认，否则按Enter键自动检测）: ${RESET}") " choice
+
+    if [[ "$choice" == "y" || "$choice" == "Y" ]]; then
+        # 尝试从 netstat 获取备用 IP
+        IP=$(netstat -i | awk '/^ixl.*mail[0-9]+/ {print $3}' | cut -d '/' -f 1)
+
+        # 尝试从两个文件获取 IP
+        if [[ -z "$IP" ]]; then
+    for file in "$HOME/.serv00_ip" "$ip_file"; do
+        if [[ -f "$file" ]]; then
+            IP=$(cat "$file")
+            if [[ -n "$IP" ]]; then
+                echo -e "${GREEN}\033[1;32m服务器备用 IP 地址是: $IP${RESET}"
+                break
+            fi
+        fi
+    done
+fi
+    else
+        # 自动检测 IP 地址
+        IP=$(curl -s ifconfig.me || { ipv6=$(curl -s --max-time 1 ipv6.ip.sb); echo "[$ipv6]"; })
+        echo -e "${CYAN}\033[1;3;32m自动检测的设备 IP 地址是: $IP${RESET}"
+    fi
+
+    # 将最终的 IP 存储到全局变量中
+    FINAL_IP="$IP"
+}
   
 get_links() {
   
@@ -1433,38 +1464,7 @@ get_links() {
 argodomain=$(get_argodomain)
 echo -e "\e[1;3;32mArgoDomain:\e[1;3;35m${argodomain}\e[0m\n"
 sleep 1
-  
-  # 提示用户是否使用备用IP地址
-  read -p "$(echo -e "${CYAN}\033[1;3;33m是否启用备用IP地址（输入y确认，否则按Enter键自动检测）: ${RESET}") " choice
-
- # 如果用户输入 y，则调用备用IP处理函数
-if [[ "$choice" == "y" || "$choice" == "Y" ]]; then
-    # 获取 IP 地址
-    IP=$(netstat -i | awk '/^ixl.*mail[0-9]+/ {print $3}' | cut -d '/' -f 1)
-    
-    if [[ -z "$IP" ]]; then
-      #  echo -e "${RED}\033[1;31m未找到备用 IP 地址，尝试从 saved_ip.txt 提取...\033[0m"
-        # 尝试从 saved_ip.txt 中提取 IP 地址
-        if [[ -f "$ip_file" ]]; then
-            IP=$(cat "$ip_file")
-            if [[ -z "$IP" ]]; then
-                echo -e "${RED}\033[1;31m从 saved_ip.txt 中未找到 IP 地址。\033[0m"
-            else
-                echo -e "${GREEN}\033[1;32m服务器备用 IP 地址是: $IP${RESET}"
-            fi
-        else
-            echo -e "${RED}\033[1;31msaved_ip.txt 文件不存在。\033[0m"
-        fi
-    else
-        echo -e "${GREEN}\033[1;32m找到的备用 IP 地址是: $IP${RESET}"
-    fi
-else
-    # 自动检测 IP 地址 (首先检测 IPv4，如果失败，则尝试 IPv6)
-    IP=$(curl -s ifconfig.me || { ipv6=$(curl -s --max-time 1 ipv6.ip.sb); echo "[$ipv6]"; })
-    echo -e "${CYAN}\033[1;3;32m自动检测的设备 IP 地址是: $IP${RESET}"
-fi
-
-    
+      
 current_fqdn=$(hostname -f)
 
 # 检查域名是否以 serv00.com 结尾
@@ -1477,7 +1477,7 @@ echo -e "${GREEN_BOLD_ITALIC}当前服务器的地址是：$current_fqdn${RESET}
   fi  
     
     # 输出最终使用的IP地址
-    echo -e "${CYAN}\033[1;3;32m最终使用的IP地址是: $IP${RESET}"
+    echo -e "${CYAN}\033[1;3;32m最终使用的IP地址是: $FINAL_IP${RESET}"
     # 获取用户名信息
       USERNAME=$(whoami)
    echo ""
@@ -1488,11 +1488,11 @@ echo -e "${GREEN_BOLD_ITALIC}当前服务器的地址是：$current_fqdn${RESET}
     # 生成并保存配置文件
 cat <<EOF > "$WORKDIR/list.txt"
 $(if [ "$INSTALL_VLESS" = "true" ]; then
-    printf "${YELLOW}\033[1mvless://$UUID@$IP:$vless_port?encryption=none&flow=xtls-rprx-vision&security=reality&sni=www.ups.com&fp=chrome&pbk=$public_key&type=tcp&headerType=none#${USERNAME}-${subdomain}${RESET}\n"
+    printf "${YELLOW}\033[1mvless://$UUID@$FINAL_IP:$vless_port/?encryption=none&flow=xtls-rprx-vision&security=reality&sni=www.ups.com&fp=chrome&pbk=$public_key&type=tcp&headerType=none#${USERNAME}-${subdomain}${RESET}\n"
 fi)
 
 $(if [ "$INSTALL_VMESS" = "true" ]; then
-    printf "${YELLOW}\033[1mvmess://$(echo "{ \"v\": \"2\", \"ps\": \"${USERNAME}-${subdomain}\", \"add\": \"$IP\", \"port\": \"$vmess_port\", \"id\": \"$UUID\", \"aid\": \"0\", \"scy\": \"none\", \"net\": \"ws\", \"type\": \"none\", \"host\": \"\", \"path\": \"/vmess?ed=2048\", \"tls\": \"\", \"sni\": \"\", \"alpn\": \"\", \"fp\": \"\"}" | base64 -w0)${RESET}\n"
+    printf "${YELLOW}\033[1mvmess://$(echo "{ \"v\": \"2\", \"ps\": \"${USERNAME}-${subdomain}\", \"add\": \"$FINAL_IP\", \"port\": \"$vmess_port\", \"id\": \"$UUID\", \"aid\": \"0\", \"scy\": \"none\", \"net\": \"ws\", \"type\": \"none\", \"host\": \"\", \"path\": \"/vmess?ed=2048\", \"tls\": \"\", \"sni\": \"\", \"alpn\": \"\", \"fp\": \"\"}" | base64 -w0)${RESET}\n"
 fi)
 
 $(if [ "$INSTALL_VMESS" = "true" ] && [ -n "$argodomain" ]; then
@@ -1500,16 +1500,16 @@ $(if [ "$INSTALL_VMESS" = "true" ] && [ -n "$argodomain" ]; then
 fi)
 
 $(if [ "$INSTALL_HYSTERIA2" = "true" ]; then
-    printf "${YELLOW}\033[1mhysteria2://$UUID@$IP:$hy2_port/?sni=www.bing.com&alpn=h3&insecure=1#${USERNAME}-${subdomain}${RESET}\n"
+    printf "${YELLOW}\033[1mhysteria2://$UUID@$FINAL_IP:$hy2_port/?sni=www.bing.com&alpn=h3&insecure=1#${USERNAME}-${subdomain}${RESET}\n"
 fi)
 
 $(if [ "$INSTALL_SOCKS5" = "true" ]; then
-    printf "${YELLOW}\033[1mSocks5 代理地址： $IP:$SOCKS5_PORT 用户名：$SOCKS5_USER 密码：$SOCKS5_PASS${RESET}\n"
+    printf "${YELLOW}\033[1mSocks5 代理地址： $FINAL_IP:$SOCKS5_PORT 用户名：$SOCKS5_USER 密码：$SOCKS5_PASS${RESET}\n"
     printf "${YELLOW}\033[1msocks://${SOCKS5_USER}:${SOCKS5_PASS}@${SERV_DOMAIN}:${SOCKS5_PORT}${RESET}\n"
 fi)
 
 $(if [ "$INSTALL_TUIC" = "true" ]; then
-    printf "${YELLOW}\033[1mtuic://$UUID:admin123@$IP:$tuic_port?sni=www.bing.com&congestion_control=bbr&udp_relay_mode=native&alpn=h3&allow_insecure=1#${USERNAME}-${subdomain}${RESET}\n"
+    printf "${YELLOW}\033[1mtuic://$UUID:admin123@$FINAL_IP:$tuic_port?sni=www.bing.com&congestion_control=bbr&udp_relay_mode=native&alpn=h3&allow_insecure=1#${USERNAME}-${subdomain}${RESET}\n"
 fi)
   
 EOF
@@ -1521,7 +1521,7 @@ green "Running done!"
 
 # 清理临时文件
 sleep 3
-rm -rf "$WORKDIR/npm" "$WORKDIR/boot.log" "$WORKDIR/sb.log" "$WORKDIR/core"
+rm -rf "$WORKDIR/npm" "$WORKDIR/boot.log" "" "$WORKDIR/core"
 }
     
 # 定义颜色函数
