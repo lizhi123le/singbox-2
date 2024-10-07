@@ -25,11 +25,11 @@ RESET='\033[0m'
 WORKDIR="$HOME/sbox"
 export CFIP=${CFIP:-'www.visa.com.tw'} 
 export CFPORT=${CFPORT:-'443'} 
-password_file="$HOME/.beiyong_ip/.panel_password"
-base_dir="$HOME/.beiyong_ip"
+password_file="$HOME/.beifile/.panel_password"
+base_dir="$HOME/.beifile"
 log_file="$base_dir/wget_log.txt"
 ip_file="$base_dir/saved_ip.txt"
-saved_ip=$(cat "$HOME/.serv00_ip" 2>/dev/null)
+saved_ip=$(cat "$base_dir/.serv00_ip" 2>/dev/null)
 ip_address=""
 FINAL_IP=""
     
@@ -140,8 +140,8 @@ process_ct8() {
 # 备用ip获取函数
 beiyong_ip() {
     # 检查是否已保存 IP 地址
-    if [[ -f "$HOME/.serv00_ip" ]]; then
-        saveda_ip=$(cat "$HOME/.serv00_ip")
+    if [[ -f "$base_dir/.serv00_ip" ]]; then
+        saveda_ip=$(cat "$base_dir/.serv00_ip")
         echo -e "\033[1;32;3m当前服务器备用 IP 地址: $saveda_ip\033[0m"  # 绿色输出
         return
     fi
@@ -160,7 +160,7 @@ beiyong_ip() {
             process_ct8  # 调用 process_ct8 函数
         else
             # 保存提取的 IP 地址到文件
-            echo "$ip_addresses" > "$HOME/.serv00_ip" || {
+            echo "$ip_addresses" > "$base_dir/.serv00_ip" || {
                 echo -e "\033[1;31m无法写入 IP 地址文件！\033[0m"  # 红色输出
                 return 1
             }
@@ -172,7 +172,7 @@ beiyong_ip() {
 # 清理所有文件函数
 cleanup_delete() {
     local target_dir="$HOME"
-    local exclude_dir="backups"
+    local exclude_dirs="backups:.beifile"
 
     if [ -d "$target_dir" ]; then
         echo -n -e "\033[1;3;33m准备卸载所有程序及文件，请稍后...\033[0m\n"
@@ -188,11 +188,12 @@ cleanup_delete() {
         fi
 
         # 删除除排除目录以外的所有内容
-        find "$target_dir" -mindepth 1 -maxdepth 1 ! -name "$exclude_dir" -exec rm -rf {} +
+        IFS=':' read -r -a exclude_array <<< "$exclude_dirs"
+        find "$target_dir" -mindepth 1 -maxdepth 1 \( -name "${exclude_array[0]}" -o -name "${exclude_array[1]}" \) -prune -o -exec rm -rf {} +
 
         # 检查删除是否成功
-        local remaining_items=$(find "$target_dir" -mindepth 1 -maxdepth 1 | grep -v "$exclude_dir")
-        if [ -d "$target_dir/$exclude_dir" ] && [ -z "$remaining_items" ]; then
+        local remaining_items=$(find "$target_dir" -mindepth 1 -maxdepth 1 | grep -v -e "${exclude_array[0]}" -e "${exclude_array[1]}")
+        if [ -z "$remaining_items" ]; then
             echo -n -e "\033[1;3;31m所有程序已卸载成功!\033[0m\n"
             exit 0
         else
@@ -202,16 +203,17 @@ cleanup_delete() {
         echo "目录 $target_dir 不存在。"
     fi
 }
+
 # 清理所有文件和进程的函数
 cleanup_and_delete() {
     local target_dir="$HOME"
-    local exclude_dir="backups"
+    local exclude_dirs="backups:.beifile"
 
     if [ -d "$target_dir" ]; then
-        echo -n -e "\033[1;3;33m准备删除所有文件并清理进程，请稍后...\033[0m\n"
+        echo -n -e "\033[1;3;33m准备初始化系统，请稍后...\033[0m\n"
         sleep 2
 
-        read -p "$(echo -e "\033[1;3;33m您确定要删除所有文件吗？(y/n Enter默认y): \033[0m")" confirmation
+        read -p "$(echo -e "\033[1;3;33m您确定要还原系统吗？\033[0m\n\033[1;31;3m(警告:此操作将会删除系统所有文件!)\033[0m\n\033[1;3;33m(y/n Enter默认y): \033[0m")" confirmation
         confirmation=${confirmation:-y}
         sleep 2
         
@@ -224,12 +226,13 @@ cleanup_and_delete() {
         pkill -u $(whoami)
 
         # 删除除排除目录以外的所有内容
-        find "$target_dir" -mindepth 1 -maxdepth 1 ! -name "$exclude_dir" -exec rm -rf {} +
+        IFS=':' read -r -a exclude_array <<< "$exclude_dirs"
+        find "$target_dir" -mindepth 1 -maxdepth 1 \( -name "${exclude_array[0]}" -o -name "${exclude_array[1]}" \) -prune -o -exec rm -rf {} +
 
         # 检查删除是否成功
-        local remaining_items=$(find "$target_dir" -mindepth 1 -maxdepth 1 | grep -v "$exclude_dir")
-        if [ -d "$target_dir/$exclude_dir" ] && [ -z "$remaining_items" ]; then
-            echo -n -e "\033[1;3;31m所有文件已成功删除!\033[0m\n"
+        local remaining_items=$(find "$target_dir" -mindepth 1 -maxdepth 1 | grep -v -e "${exclude_array[0]}" -e "${exclude_array[1]}")
+        if [ -z "$remaining_items" ]; then
+            echo -n -e "\033[1;3;31m已成功初始化系统!\033[0m\n"
             exit 0
         else
             echo "删除操作出现问题，请检查是否有权限问题或其他错误。"
@@ -372,8 +375,8 @@ setup_socks5() {
   fi
 
   # 创建配置文件
-  echo -e "${CYAN}创建配置文件: ${FILE_PATH}/config.json${RESET}"
-  cat > "$FILE_PATH/config.json" << EOF
+  echo -e "${CYAN}创建配置文件: ${FILE_PATH}/socks.json${RESET}"
+  cat > "$FILE_PATH/socks.json" << EOF
 {
   "log": {
     "access": "/dev/null",
@@ -431,7 +434,7 @@ EOF
 
   # 启动 socks5 程序
   chmod +x "${FILE_PATH}/socks5"
-  nohup "${FILE_PATH}/socks5" -c "${FILE_PATH}/config.json" >/dev/null 2>&1 &
+  nohup "${FILE_PATH}/socks5" -c "${FILE_PATH}/socks.json" >/dev/null 2>&1 &
   sleep 1
 
   # 检查程序是否启动成功
@@ -452,7 +455,7 @@ EOF
 }
     
 # 定义存储 UUID 的文件路径
-UUID_FILE="${HOME}/.singbox_uuid"
+UUID_FILE="${HOME}/.beifile/.singbox_uuid"
 
 # Check if UUID file exists
 if [ -f "$UUID_FILE" ]; then
@@ -852,6 +855,7 @@ read_nz_variables() {
 argo_configure() {
     if [[ "$INSTALL_VMESS" == "true" ]]; then
         reading "是否需要使用固定 Argo 隧道？【y/n】(N 或者回车为默认使用临时隧道):\c" argo_choice
+        
         # 处理用户输入
         if [[ -z $argo_choice ]]; then
             green "没有输入任何内容，默认使用临时隧道"
@@ -859,14 +863,14 @@ argo_configure() {
         elif [[ "$argo_choice" != "y" && "$argo_choice" != "Y" && "$argo_choice" != "n" && "$argo_choice" != "N" ]]; then
             red "无效的选择，请输入 y 或 n"
             return
-        fi
+        fi       
 
-        
-    # 提示用户生成配置信息
-    echo -e "${yellow}请访问以下网站生成 Argo 固定隧道所需的配置信息。${RESET}"
-       echo ""
-    echo -e "${red}      https://fscarmen.cloudflare.now.cc/ ${reset}"
-           echo ""
+        # 提示用户生成配置信息
+        echo -e "${yellow}请访问以下网站生成 Argo 固定隧道所需的配置信息。${RESET}"
+        echo ""
+        echo -e "${red}      https://fscarmen.cloudflare.now.cc/ ${reset}"
+        echo ""
+
         if [[ "$argo_choice" == "y" || "$argo_choice" == "Y" ]]; then
             while [[ -z $ARGO_DOMAIN ]]; do
                 reading "请输入 Argo 固定隧道域名: " ARGO_DOMAIN
@@ -891,43 +895,23 @@ argo_configure() {
             green "选择使用临时隧道"
             return
         fi
-
-        # 打印调试信息
-        echo "ARGO_AUTH: $ARGO_AUTH"
-        echo "ARGO_DOMAIN: $ARGO_DOMAIN"
-        echo "WORKDIR: $WORKDIR"
         
         # 生成 tunnel.yml
         if [[ $ARGO_AUTH =~ TunnelSecret ]]; then
-            echo "$ARGO_AUTH" > "$WORKDIR/tunnel.json" 2>/tmp/tunnel.json.error
+            echo "$ARGO_AUTH" > "$WORKDIR/tunnel.json" 2>"$WORKDIR/tunnel.json.error"
             if [[ $? -ne 0 ]]; then
                 red "生成 tunnel.json 文件失败，请检查权限和路径"
-                cat /tmp/tunnel.json.error
+                 cat "$WORKDIR/tunnel.json.error" 2>/dev/null
                 return
             fi
-
-            cat > "$WORKDIR/tunnel.yml" <<EOF
-tunnel: $(cut -d\" -f12 <<< "$ARGO_AUTH")
-credentials-file: $WORKDIR/tunnel.json
-protocol: http2
-
-ingress:
-  - hostname: $ARGO_DOMAIN
-    service: http://localhost:$vmess_port
-    originRequest:
-      noTLSVerify: true
-  - service: http_status:404
-EOF
-            if [[ $? -ne 0 ]]; then
-                red "生成 tunnel.yml 文件失败，请检查权限和路径"
-                return
-            fi
-
-            green "生成的 tunnel.yml 配置文件已保存到 $WORKDIR"
+            credentials_file="$WORKDIR/tunnel.json"
         else
-            cat > "$WORKDIR/tunnel.yml" <<EOF
-tunnel: $ARGO_AUTH
-credentials-file: /dev/null
+            credentials_file="/dev/null"
+        fi
+
+        cat > "$WORKDIR/tunnel.yml" <<EOF
+tunnel: $(cut -d\" -f12 <<< "$ARGO_AUTH")
+credentials-file: $credentials_file
 protocol: http2
 
 ingress:
@@ -937,18 +921,17 @@ ingress:
       noTLSVerify: true
   - service: http_status:404
 EOF
-            if [[ $? -ne 0 ]]; then
-                red "生成 tunnel.yml 文件失败，请检查权限和路径"
-                return
-            fi
 
-            green "生成的 tunnel.yml 配置文件已保存到 $WORKDIR"
+        if [[ $? -ne 0 ]]; then
+            red "生成 tunnel.yml 文件失败，请检查权限和路径"
+            return
         fi
+
+        green "生成的 tunnel.yml 配置文件已保存到 $WORKDIR"
     else
         green "没有选择 vmess 协议，暂停使用 Argo 固定隧道"
     fi
 }
-
  
 # 定义颜色
 YELLOW='\033[1;3;33m'
@@ -978,7 +961,7 @@ RESET="\033[0m"
     done
 }
 start_service() {
-  if [ -f "$HOME/.enabled_flag" ]; then
+  if [ -f "$HOME/.beifile/.enabled_flag" ]; then
     echo -e "\e[32;1;3m=== Enabled 已为你自动已开启===  \e[33;1;3m注意：第一次开启Enabled后，请重启服务器后生效，切记！！！\e[0m"
     return
   fi
@@ -986,7 +969,7 @@ start_service() {
   devil binexec on > /dev/null 2>&1
   if [ $? -eq 0 ]; then
     echo -e "\e[32;1;3m=== Enabled 已为你自动已开启===  \e[33;1;3m注意：第一次开启Enabled后，请重启服务器后生效，切记！！！\e[0m"
-    touch "$HOME/.enabled_flag"  # 创建标志文件
+    touch "$HOME/.beeifile/.enabled_flag"  # 创建标志文件
   else
     echo -e "\e[31m\e[3m\e[1mEnabled未开启，请尝试手动开启.\e[0m"  # 红色斜体加粗输出
   fi
@@ -1286,17 +1269,17 @@ echo ""
 YELLOW="\033[1;3;33m"
 RESET="\033[0m"
  
- # Define default paths using the current user's home directory
+ # 使用当前用户的主目录定义默认路径
 CERT_PATH="${HOME}/sbox/cert.pem"
 PRIVATE_KEY_PATH="${HOME}/sbox/private.key"
- 
+# 配置文件生成函数 
 generate_config() {
-    # Generate reality key pair
+    # 生成现实密钥对
     output=$(./web generate reality-keypair)
     private_key=$(echo "${output}" | awk '/PrivateKey:/ {print $2}')
     public_key=$(echo "${output}" | awk '/PublicKey:/ {print $2}')
 
-    # Generate TLS certificate and key
+    # 生成TLS证书和密钥
     openssl ecparam -genkey -name prime256v1 -out "$WORKDIR/private.key"
     openssl req -new -x509 -days 3650 -key "$WORKDIR/private.key" -out "$WORKDIR/cert.pem" -subj "/CN=$HOSTNAME"
 
@@ -1306,7 +1289,7 @@ generate_config() {
         return 1
     fi
 
-    # Create configuration file based on selected services
+    # 基于所选服务创建配置文件
     cat > "$WORKDIR/config.json" <<EOF
 {
   "log": {
@@ -1345,10 +1328,10 @@ generate_config() {
   "inbounds": [
 EOF
 
-    # Track whether any services are added
+    # 跟踪是否添加了任何服务
     service_added=false
 
-    # Append VLESS configuration if selected
+    # 如果选择，则附加VLESS配置
     if [ "$INSTALL_VLESS" = "true" ]; then
         cat >> "$WORKDIR/config.json" <<EOF
     {
@@ -1387,7 +1370,7 @@ EOF
     {
       "tag": "vmess-ws-in",
       "type": "vmess",
-      "listen": "$FINAL_IP",
+      "listen": "::",
       "listen_port": $vmess_port,
       "users": [
         {
@@ -1456,7 +1439,7 @@ EOF
 EOF
     fi
 
-    # Continue writing the rest of the configuration
+    # 继续写入配置的其余部分
     cat >> "$WORKDIR/config.json" <<EOF
   ],
   "outbounds": [
@@ -1546,11 +1529,12 @@ EOF
 }
 
 
-# running files
+# 启动服务的函数
 run_sb() {
   green() {
     echo -e "\e[32;3;1m$1\e[0m"
 }
+# 启动 npm
     if [ -e "$WORKDIR/npm" ]; then
         tlsPorts=("443" "8443" "2096" "2087" "2083" "2053")
         if [[ "${tlsPorts[*]}" =~ "${NEZHA_PORT}" ]]; then
@@ -1563,17 +1547,17 @@ run_sb() {
             nohup "$WORKDIR/npm" -s ${NEZHA_SERVER}:${NEZHA_PORT} -p ${NEZHA_KEY} ${NEZHA_TLS} >/dev/null 2>&1 &
             sleep 2
             pgrep -x "npm" > /dev/null && green "npm is running" || { red "npm is not running, restarting..."; pkill -x "npm" && nohup "$WORKDIR/npm" -s "${NEZHA_SERVER}:${NEZHA_PORT}" -p "${NEZHA_KEY}" ${NEZHA_TLS} >/dev/null 2>&1 & sleep 2; purple "npm restarted"; }
-       # else
-        #     purple "NEZHA variable is empty, skipping running"
+       else
+       purple "NEZHA variable is empty, skipping running"
         fi
     fi
-
+# 启动 web
     if [ -e "$WORKDIR/web" ]; then
         nohup "$WORKDIR/web" run -c "$WORKDIR/config.json" >/dev/null 2>&1 &
         sleep 2
         pgrep -x "web" > /dev/null && green "WEB is running" || { red "web is not running, restarting..."; pkill -x "web" && nohup "$WORKDIR/web" run -c "$WORKDIR/config.json" >/dev/null 2>&1 & sleep 2; purple "web restarted"; }
     fi
-    
+    # 启动 bot
       if [ -e $WORKDIR/bot ]; then
     if [[ $ARGO_AUTH =~ ^[A-Z0-9a-z=]{120,250}$ ]]; then
       args="tunnel --edge-ip-version auto --no-autoupdate --protocol http2 run --token ${ARGO_AUTH}"
@@ -1597,7 +1581,7 @@ get_ip() {
 
         # 尝试从两个文件获取 IP
         if [[ -z "$IP" ]]; then
-    for file in "$HOME/.serv00_ip" "$ip_file"; do
+    for file in "$base_dir/.serv00_ip" "$ip_file"; do
         if [[ -f "$file" ]]; then
             IP=$(cat "$file")
             if [[ -n "$IP" ]]; then
@@ -1615,21 +1599,32 @@ fi
 
     # 将最终的 IP 存储到全局变量中
     FINAL_IP="$IP"
+      # 输出最终使用的IP地址
+    echo -e "${CYAN}\033[1;3;32m最终使用的IP地址是: $FINAL_IP${RESET}"
 }
-  
+  get_argodomain() {
+    if [[ -n $ARGO_AUTH ]]; then
+    echo "$ARGO_DOMAIN"
+  else
+    local retry=0
+    local max_retries=6
+    local argodomain=""
+    while [[ $retry -lt $max_retries ]]; do
+      ((retry++))
+      argodomain=$(grep -oE 'https://[[:alnum:]+\.-]+\.trycloudflare\.com' boot.log | sed 's@https://@@') 
+      if [[ -n $argodomain ]]; then
+        break
+      fi
+      sleep 1
+    done
+    echo "$argodomain"
+  fi
+  } 
 get_links() {
   
      purple() {
         echo -e "\\033[1;3;35m$*\\033[0m"
     }
-  
-  get_argodomain() {
-    if [[ -n $ARGO_AUTH ]]; then
-      echo "$ARGO_DOMAIN"
-    else
-      grep -oE 'https://[[:alnum:]+\.-]+\.trycloudflare\.com' boot.log | sed 's@https://@@'
-    fi
-  }
 argodomain=$(get_argodomain)
 echo -e "\e[1;3;32mArgoDomain:\e[1;3;35m${argodomain}\e[0m\n"
 sleep 1
@@ -1645,8 +1640,6 @@ echo -e "${GREEN_BOLD_ITALIC}当前服务器的地址是：$current_fqdn${RESET}
     subdomain=${current_fqdn%%.*}    
   fi  
     
-    # 输出最终使用的IP地址
-    echo -e "${CYAN}\033[1;3;32m最终使用的IP地址是: $FINAL_IP${RESET}"
     # 获取用户名信息
       USERNAME=$(whoami)
    echo ""
@@ -2003,7 +1996,6 @@ done
    
 }
 menu
-
 
 
 
