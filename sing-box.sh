@@ -24,8 +24,8 @@ RESET='\033[0m'
 # 设置工作目录
 WORKDIR="$HOME/sbox"
 mkdir -p $HOME/.beifile
-export CFIP=${CFIP:-'www.visa.com.tw'} 
-export CFPORT=${CFPORT:-'443'} 
+export CFIP=${CFIP:-'www.visa.com.tw'}
+export CFPORT=${CFPORT:-'443'}
 base_dir="$HOME/.beifile"
 password_file="$HOME/.beifile/.panel_password"
 log_file="$base_dir/wget_log.txt"
@@ -857,55 +857,62 @@ read_nz_variables() {
 
 #固定argo隧道  
 argo_configure() {
-    if [[ "$INSTALL_VMESS" == "true" ]]; then
-         while true; do
-            reading "是否需要开启Argo隧道？【y/n ENTER默认开启】: " argo_choice
-            
-            # 处理用户输入，按 Enter 默认选择 y
-            if [[ -z "$argo_choice" || "$argo_choice" == "y" || "$argo_choice" == "Y" ]]; then
-                break  # 有效选择，退出循环
-            elif [[ "$argo_choice" == "n" || "$argo_choice" == "N" ]]; then
-               echo -e "\e[1;3;31mArgo隧道功能未开启!\e[0m"
-                return  # 仅退出函数，不退出整个脚本
-            else
-                red "无效的选择，请输入 y 或 n"
-            fi
-        done
+if [[ "$INSTALL_VMESS" == "true" ]]; then
+    reading "Y 固定Argo隧道 或者 N 使用临时隧道【y/n】(ENTER默认y):\c" argo_choice
+    
+    # 处理用户输入
+    if [[ -z $argo_choice ]]; then
+        green "开启固定隧道功能，请稍后..."
+      sleep 3
+    elif [[ "$argo_choice" == "y" || "$argo_choice" == "Y" ]]; then
+        green "开启固定隧道功能，请稍后..."
+        sleep 3
+    elif [[ "$argo_choice" == "n" || "$argo_choice" == "N" ]]; then
+      sleep 1
+        yellow_bold_italic "将使用临时隧道,注意:临时隧道不稳定,建议固定隧道！"
+        sleep 3
+    else
+        red "无效的选择，请输入 y 或 n"
+        return
+    fi 
 
         # 提示用户生成配置信息
-        echo -e "\e[1;3;32m请访问以下网站生成 Argo 固定隧道所需的配置信息。\e[0m"
+    echo -e "\033[1;3;33m请访问以下网站生成 Argo 固定隧道所需的Json配置信息。${RESET}"
         echo ""
         echo -e "${red}      https://fscarmen.cloudflare.now.cc/ ${reset}"
         echo ""
 
-        # 获取 Argo 域名
-        while [[ -z $ARGO_DOMAIN ]]; do
-            reading "请输入 Argo 固定隧道域名: " ARGO_DOMAIN
-            if [[ -z $ARGO_DOMAIN ]]; then
-                red "Argo 固定隧道域名不能为空，请重新输入。"
-            else
-                green "你的 Argo 固定隧道域名为: $ARGO_DOMAIN"
-            fi
-        done
+        if [[ "$argo_choice" == "y" || "$argo_choice" == "Y" ]]; then
+            while [[ -z $ARGO_DOMAIN ]]; do
+                reading "请输入 Argo 固定隧道域名: " ARGO_DOMAIN
+                if [[ -z $ARGO_DOMAIN ]]; then
+                    red "Argo 固定隧道域名不能为空，请重新输入。"
+                else
+                    green "你的 Argo 固定隧道域名为: $ARGO_DOMAIN"
+                fi
+            done
+            
+            while [[ -z $ARGO_AUTH ]]; do
+                reading "请输入 Argo 固定隧道密钥（Json 或 Token）: " ARGO_AUTH
+                if [[ -z $ARGO_AUTH ]]; then
+                    red "Argo 固定隧道密钥不能为空，请重新输入。"
+                else
+                    green "你的 Argo 固定隧道密钥为: $ARGO_AUTH"
+                fi
+            done
+            
+            echo -e "${red}注意：${purple}使用 token，需要在 Cloudflare 后台设置隧道端口和面板开放的 TCP 端口一致${RESET}"
+        else
+            green "选择使用临时隧道"
+            return
+        fi
         
-        # 获取 Argo 密钥
-        while [[ -z $ARGO_AUTH ]]; do
-            reading "请输入 Argo 固定隧道密钥（Json 或 Token）: " ARGO_AUTH
-            if [[ -z $ARGO_AUTH ]]; then
-                red "Argo 固定隧道密钥不能为空，请重新输入。"
-            else
-                green "你的 Argo 固定隧道密钥为: $ARGO_AUTH"
-            fi
-        done
-        
-        echo -e "${red}注意：${purple}使用 token，需要在 Cloudflare 后台设置隧道端口和面板开放的 TCP 端口一致${RESET}"
-
         # 生成 tunnel.yml
         if [[ $ARGO_AUTH =~ TunnelSecret ]]; then
             echo "$ARGO_AUTH" > "$WORKDIR/tunnel.json" 2>"$WORKDIR/tunnel.json.error"
             if [[ $? -ne 0 ]]; then
                 red "生成 tunnel.json 文件失败，请检查权限和路径"
-                cat "$WORKDIR/tunnel.json.error" 2>/dev/null
+                 cat "$WORKDIR/tunnel.json.error" 2>/dev/null
                 return
             fi
             credentials_file="$WORKDIR/tunnel.json"
@@ -934,7 +941,6 @@ EOF
         green "没有选择 vmess 协议，暂停使用 Argo 固定隧道"
     fi
 }
-
 # 定义颜色
 YELLOW='\033[1;3;33m'
 NC='\033[0m' # No Color
@@ -1126,9 +1132,11 @@ done
 
         if [[ "$argo_choice" == [Yy] ]]; then
             argo_configure
+            ARGO_CONFIGURED=true
         else
+        ARGO_CONFIGURED=false
             echo -e "$(bold_italic_green "跳过Argo功能配置...")"
-            ARGO_DOMAIN=""  # 清除 Argo 域名
+          
         fi      
     fi
 
@@ -1264,7 +1272,7 @@ echo ""
         
         chmod +x $FILENAME
     done
-} 
+}
  # Define color codes
 YELLOW="\033[1;3;33m"
 RESET="\033[0m"
@@ -1272,7 +1280,7 @@ RESET="\033[0m"
  # 使用当前用户的主目录定义默认路径
 CERT_PATH="${HOME}/sbox/cert.pem"
 PRIVATE_KEY_PATH="${HOME}/sbox/private.key"
-# 配置文件生成函数 
+# 配置文件生成函数
 generate_config() {
     # 生成现实密钥对
     output=$(./web generate reality-keypair)
@@ -1564,7 +1572,7 @@ run_sb() {
     elif [[ $ARGO_AUTH =~ TunnelSecret ]]; then
       args="tunnel --edge-ip-version auto --config $WORKDIR/tunnel.yml run"
     else
-      args="tunnel --edge-ip-version auto --no-autoupdate --protocol http2 --logfile $WORKDIR/boot.log --loglevel info --url http://localhost:8080"
+     args="tunnel --edge-ip-version auto --no-autoupdate --protocol http2 --logfile $WORKDIR/boot.log --loglevel info --url http://localhost:8080"
     fi
     nohup $WORKDIR/bot $args >/dev/null 2>&1 &
     sleep 2
@@ -1625,7 +1633,7 @@ fi
             red "未能从 boot.log 中提取 Argo 域名。"
             return 1  # 返回非零值表示失败
         else
-            echo "argodomain: $argodomain "
+            echo "$argodomain"
             return 0
         fi
     fi
@@ -1637,11 +1645,10 @@ get_links() {
      purple() {
         echo -e "\\033[1;3;35m$*\\033[0m"
     }
-argodomain=$(get_argodomain)
-if [[ -n "$argodomain" ]]; then
-    echo -e "\e[1;3;33mArgo隧道未开启，建议开启隧道功能!\e[0m"
-else
-  echo -e "\e[1;3;32mArgoDomain:\e[1;3;35m${argodomain}\e[0m\n" 
+# 假设 argo_configure 函数会设置某个标志变量
+if [ "$ARGO_CONFIGURED" = true ]; then
+    argodomain=$(get_argodomain)
+    echo -e "\e[1;3;32mArgoDomain:\e[1;3;35m${argodomain}\e[0m\n"
 fi
 sleep 1
       
@@ -1670,15 +1677,12 @@ $(if [ "$INSTALL_VLESS" = "true" ]; then
 fi)
 
 $(if [ "$INSTALL_VMESS" = "true" ]; then
-    if [ -n "$argodomain" ]; then
-        # 生成带 Argo 的链接
-        printf "${YELLOW}\033[1mvmess://$(echo "{ \"v\": \"2\", \"ps\": \"${USERNAME}-${subdomain}\", \"add\": \"$CFIP\", \"port\": \"$CFPORT\", \"id\": \"$UUID\", \"aid\": \"0\", \"scy\": \"none\", \"net\": \"ws\", \"type\": \"none\", \"host\": \"$argodomain\", \"path\": \"/vmess?ed=2048\", \"tls\": \"tls\", \"sni\": \"$argodomain\", \"alpn\": \"\", \"fp\": \"\"}" | base64 -w0)${RESET}\n"
-         echo ""
-        # 生成不带 Argo 的链接
-        printf "${YELLOW}\033[1mvmess://$(echo "{ \"v\": \"2\", \"ps\": \"${USERNAME}-${subdomain}\", \"add\": \"$FINAL_IP\", \"port\": \"$vmess_port\", \"id\": \"$UUID\", \"aid\": \"0\", \"scy\": \"none\", \"net\": \"ws\", \"type\": \"none\", \"host\": \"\", \"path\": \"/vmess?ed=2048\", \"tls\": \"\", \"sni\": \"\", \"alpn\": \"\", \"fp\": \"\"}" | base64 -w0)${RESET}\n"
-    else
-        # 只生成不带 Argo 的链接
-        printf "${YELLOW}\033[1mvmess://$(echo "{ \"v\": \"2\", \"ps\": \"${USERNAME}-${subdomain}\", \"add\": \"$FINAL_IP\", \"port\": \"$vmess_port\", \"id\": \"$UUID\", \"aid\": \"0\", \"scy\": \"none\", \"net\": \"ws\", \"type\": \"none\", \"host\": \"\", \"path\": \"/vmess?ed=2048\", \"tls\": \"\", \"sni\": \"\", \"alpn\": \"\", \"fp\": \"\"}" | base64 -w0)${RESET}\n"
+    # 生成不带 argodomain 的链接
+    printf "${YELLOW}\033[1mvmess://$(echo "{ \"v\": \"2\", \"ps\": \"${USERNAME}-${subdomain}\", \"add\": \"$FINAL_IP\", \"port\": \"$vmess_port\", \"id\": \"$UUID\", \"aid\": \"0\", \"scy\": \"none\", \"net\": \"ws\", \"type\": \"none\", \"host\": \"\", \"path\": \"/vmess?ed=2048\", \"tls\": \"\", \"sni\": \"\", \"alpn\": \"\", \"fp\": \"\"}" | base64 -w0)${RESET}\n"
+   echo ""
+    # 如果 ARGO_CONFIGURED 为 true，生成带 argodomain 的链接
+    if [ "$ARGO_CONFIGURED" = true ]; then
+        printf "${YELLOW}\033[1mvmess://$(echo "{ \"v\": \"2\", \"ps\": \"${USERNAME}-${subdomain}\", \"add\": \"www.visa.com.tw\", \"port\": \"443\", \"id\": \"$UUID\", \"aid\": \"0\", \"scy\": \"none\", \"net\": \"ws\", \"type\": \"none\", \"host\": \"$argodomain\", \"path\": \"/vmess?ed=2048\", \"tls\": \"tls\", \"sni\": \"$argodomain\", \"alpn\": \"\", \"fp\": \"\"}" | base64 -w0)${RESET}\n"
     fi
 fi)
 
@@ -1704,7 +1708,7 @@ green "Running done!"
 
 # 清理临时文件
 sleep 3
-rm -rf "$WORKDIR/npm" "$WORKDIR/boot.log" "" "$WORKDIR/core"
+rm -rf  "$WORKDIR/boot.log"  "$WORKDIR/core"
 }
     
 # 定义颜色函数
@@ -1763,7 +1767,7 @@ start_web() {
     if [ -e "$WORKDIR/tunnel.yml" ]; then
         args="${args:-tunnel --edge-ip-version auto --config $WORKDIR/tunnel.yml run}"
     else
-        args="tunnel --edge-ip-version auto --no-autoupdate --protocol http2 --logfile $WORKDIR/boot.log --loglevel info --url http://localhost:8080"
+     args="tunnel --edge-ip-version auto --no-autoupdate --protocol http2 --logfile $WORKDIR/boot.log --loglevel info --url http://localhost:8080"
     fi
     
     # 启动 bot 进程
@@ -2017,6 +2021,4 @@ done
    
 }
 menu
-
-
 
