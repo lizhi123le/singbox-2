@@ -19,7 +19,14 @@ bold_italic_yellow() { echo -e "${bold_yellow}\033[3m$1${reset}"; }
 bold_italic_purple() { echo -e "${bold_purple}\033[3m$1${reset}"; }
 RED_BOLD_ITALIC='\033[1;3;31m'  
 GREEN_BOLD_ITALIC='\033[1;3;32m'  
-RESET='\033[0m'  
+RESET='\033[0m' 
+red() {
+    local RED='\033[0;31m'      # 红色
+    local BOLD='\033[1m'        # 加粗
+    local ITALIC='\033[3m'      # 斜体
+    local RESET='\033[0m'       # 重置
+    echo -e "${BOLD}${ITALIC}${RED}$1${RESET}"
+}
 
 # 设置工作目录
 WORKDIR="$HOME/sbox"
@@ -858,24 +865,26 @@ read_nz_variables() {
 #固定argo隧道  
 argo_configure() {
 if [[ "$INSTALL_VMESS" == "true" ]]; then
-    reading "Y 固定Argo隧道 或者 N 使用临时隧道【y/n】(ENTER默认y):\c" argo_choice
-    
+while true; do
+    reading "Y 固定Argo隧道 或者 N 使用临时隧道【y/n】(ENTER默认y):\c" argo_choice 
     # 处理用户输入
     if [[ -z $argo_choice ]]; then
         green "开启固定隧道功能，请稍后..."
       sleep 3
+      break 
     elif [[ "$argo_choice" == "y" || "$argo_choice" == "Y" ]]; then
         green "开启固定隧道功能，请稍后..."
         sleep 3
+        break 
     elif [[ "$argo_choice" == "n" || "$argo_choice" == "N" ]]; then
       sleep 1
-        yellow_bold_italic "将使用临时隧道,注意:临时隧道不稳定,建议固定隧道！"
+       echo -e "${BOLD}${ITALIC}\033[1;3;32m将使用临时隧道...\033[0m${RESET} \n${BOLD}${ITALIC}\033[1;3;31m注意: 临时隧道不稳定, 可能会出现不通，建议固定隧道！${RESET}"
         sleep 3
+        break 
     else
-        red "无效的选择，请输入 y 或 n"
-        return
+        red "无效的选择，请输入 y 或 n 或直接按Enter键"
     fi 
-
+done
         # 提示用户生成配置信息
     echo -e "\033[1;3;33m请访问以下网站生成 Argo 固定隧道所需的Json配置信息。${RESET}"
         echo ""
@@ -1610,36 +1619,26 @@ fi
       # 输出最终使用的IP地址
     echo -e "${CYAN}\033[1;3;32m最终使用的IP地址是: $FINAL_IP${RESET}"
 }
- get_argodomain() {
-    if [[ -n $ARGO_AUTH ]]; then
-        echo "$ARGO_DOMAIN"
-    else
-        # 检查是否已经选择了开启 Argo 隧道
-        if [[ "$INSTALL_VMESS" == "true" && "$ENABLE_ARGO" == "true" ]]; then
-            local retry=0
-            local max_retries=6
-            local argodomain=""
-
-            while [[ $retry -lt $max_retries ]]; do
-                ((retry++))
-                argodomain=$(grep -oE 'https://[[:alnum:]+\.-]+\.trycloudflare\.com' boot.log | sed 's@https://@@')
-                if [[ -n $argodomain ]]; then
-                    echo "$argodomain"
-                    return 0
-                fi
-                sleep 1
-            done
-            
-            red "未能从 boot.log 中提取 Argo 域名。"
-            return 1  # 返回非零值表示失败
-        else
-            echo "$argodomain"
-            return 0
-        fi
-    fi
-   
+#获取临时或固定隧道域名
+get_argodomain() {
+  if [[ -n $ARGO_AUTH ]]; then
+    echo "$ARGO_DOMAIN"
+  else
+    local retry=0
+    local max_retries=6
+    local argodomain=""
+    while [[ $retry -lt $max_retries ]]; do
+      ((retry++))
+      argodomain=$(grep -oE 'https://[[:alnum:]+\.-]+\.trycloudflare\.com' boot.log | sed 's@https://@@') 
+      if [[ -n $argodomain ]]; then
+        break
+      fi
+      sleep 1
+    done
+    echo "$argodomain"
+  fi
 }
-
+#生成客户端通用链接
 get_links() {
   
      purple() {
@@ -1673,30 +1672,40 @@ echo -e "${GREEN_BOLD_ITALIC}当前服务器的地址是：$current_fqdn${RESET}
     # 生成并保存配置文件
 cat <<EOF > "$WORKDIR/list.txt"
 $(if [ "$INSTALL_VLESS" = "true" ]; then
-    printf "${YELLOW}\033[1mvless://$UUID@$FINAL_IP:$vless_port/?encryption=none&flow=xtls-rprx-vision&security=reality&sni=www.ups.com&fp=chrome&pbk=$public_key&type=tcp&headerType=none#${USERNAME}-${subdomain}${RESET}\n"
+     echo -e "\033[1;32;3m以下为vless客户端通用链接\033[0m"
+     printf "\n"  
+     printf "${YELLOW}\033[1mvless://$UUID@$FINAL_IP:$vless_port/?encryption=none&flow=xtls-rprx-vision&security=reality&sni=www.ups.com&fp=chrome&pbk=$public_key&type=tcp&headerType=none#${USERNAME}-${subdomain}${RESET}\n"
 fi)
 
 $(if [ "$INSTALL_VMESS" = "true" ]; then
     # 生成不带 argodomain 的链接
+    echo -e "\033[1;32;3m以下为vmess客户端通用链接\033[0m"
+    printf "\n"
     printf "${YELLOW}\033[1mvmess://$(echo "{ \"v\": \"2\", \"ps\": \"${USERNAME}-${subdomain}\", \"add\": \"$FINAL_IP\", \"port\": \"$vmess_port\", \"id\": \"$UUID\", \"aid\": \"0\", \"scy\": \"none\", \"net\": \"ws\", \"type\": \"none\", \"host\": \"\", \"path\": \"/vmess?ed=2048\", \"tls\": \"\", \"sni\": \"\", \"alpn\": \"\", \"fp\": \"\"}" | base64 -w0)${RESET}\n"
    echo ""
     # 如果 ARGO_CONFIGURED 为 true，生成带 argodomain 的链接
     if [ "$ARGO_CONFIGURED" = true ]; then
+        echo -e "\033[1;32;3m以下为vmess开启隧道功能链接，替换www.visa.com.tw为自己的优选ip可获得极致体验\033[0m"
+        printf "\n"
         printf "${YELLOW}\033[1mvmess://$(echo "{ \"v\": \"2\", \"ps\": \"${USERNAME}-${subdomain}\", \"add\": \"www.visa.com.tw\", \"port\": \"443\", \"id\": \"$UUID\", \"aid\": \"0\", \"scy\": \"none\", \"net\": \"ws\", \"type\": \"none\", \"host\": \"$argodomain\", \"path\": \"/vmess?ed=2048\", \"tls\": \"tls\", \"sni\": \"$argodomain\", \"alpn\": \"\", \"fp\": \"\"}" | base64 -w0)${RESET}\n"
     fi
 fi)
 
 $(if [ "$INSTALL_HYSTERIA2" = "true" ]; then
+     echo -e "\033[1;32;3m以下为HYSTERIA2客户端通用链接\033[0m"
+     printf "\n"
     printf "${YELLOW}\033[1mhysteria2://$UUID@$FINAL_IP:$hy2_port/?sni=www.bing.com&alpn=h3&insecure=1#${USERNAME}-${subdomain}${RESET}\n"
+fi)
+
+$(if [ "$INSTALL_TUIC" = "true" ]; then
+     echo -e "\033[1;32;3m以下为TUIC客户端通用链接\033[0m"
+     printf "\n"
+    printf "${YELLOW}\033[1mtuic://$UUID:admin123@$FINAL_IP:$tuic_port?sni=www.bing.com&congestion_control=bbr&udp_relay_mode=native&alpn=h3&allow_insecure=1#${USERNAME}-${subdomain}${RESET}\n"
 fi)
 
 $(if [ "$INSTALL_SOCKS5" = "true" ]; then
     printf "${YELLOW}\033[1mSocks5 代理地址： $FINAL_IP:$SOCKS5_PORT 用户名：$SOCKS5_USER 密码：$SOCKS5_PASS${RESET}\n"
     printf "${YELLOW}\033[1msocks://${SOCKS5_USER}:${SOCKS5_PASS}@${SERV_DOMAIN}:${SOCKS5_PORT}${RESET}\n"
-fi)
-
-$(if [ "$INSTALL_TUIC" = "true" ]; then
-    printf "${YELLOW}\033[1mtuic://$UUID:admin123@$FINAL_IP:$tuic_port?sni=www.bing.com&congestion_control=bbr&udp_relay_mode=native&alpn=h3&allow_insecure=1#${USERNAME}-${subdomain}${RESET}\n"
 fi)
   
 EOF
