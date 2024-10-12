@@ -243,7 +243,7 @@ cleanup_and_delete() {
         # 检查删除是否成功
         local remaining_items=$(find "$target_dir" -mindepth 1 -maxdepth 1 | grep -v -e "${exclude_array[0]}" -e "${exclude_array[1]}")
         if [ -z "$remaining_items" ]; then
-            echo -n -e "\033[1;3;31m已成功初始化系统!\033[0m\n"
+            echo -n -e "\033[1;3;32m已成功初始化系统!\033[0m\n"
             exit 0
         else
             echo "删除操作出现问题，请检查是否有权限问题或其他错误。"
@@ -451,7 +451,8 @@ EOF
   # 检查程序是否启动成功
   if pgrep -x "socks5" > /dev/null; then
     echo -e "\033[1;3;32mSocks5 代理程序启动成功\033[0m"
-    echo -e "\033[1;3;33mSocks5 代理地址： $IP:$socks5_port 用户名：$SOCKS5_USER 密码：$SOCKS5_PASS\033[0m"   
+    echo -e "\033[1;3;33mSocks5 代理地址： $IP:$socks5_port 用户名：$SOCKS5_USER 密码：$SOCKS5_PASS\033[0m" 
+    echo ""
     # 显示代理 URL
     echo -e "\033[1;3;33msocks://${SOCKS5_USER}:${SOCKS5_PASS}@${SERV_DOMAIN}:${socks5_port}\033[0m"
       
@@ -1354,7 +1355,7 @@ EOF
     {
       "tag": "vless-reality-version",
       "type": "vless",
-      "listen": "$FINAL_IP",
+      "listen": "::",
       "listen_port": $vless_port,
       "users": [
         {
@@ -1687,7 +1688,7 @@ $(if [ "$INSTALL_VMESS" = "true" ]; then
     if [ "$ARGO_CONFIGURED" = true ]; then
         echo -e "\033[1;32;3m以下为vmess开启隧道功能链接，替换www.visa.com.tw为自己的优选ip可获得极致体验\033[0m"
         printf "\n"
-        printf "${YELLOW}\033[1mvmess://$(echo "{ \"v\": \"2\", \"ps\": \"${USERNAME}-${subdomain}\", \"add\": \"www.visa.com.tw\", \"port\": \"443\", \"id\": \"$UUID\", \"aid\": \"0\", \"scy\": \"none\", \"net\": \"ws\", \"type\": \"none\", \"host\": \"$argodomain\", \"path\": \"/vmess?ed=2048\", \"tls\": \"tls\", \"sni\": \"$argodomain\", \"alpn\": \"\", \"fp\": \"\"}" | base64 -w0)${RESET}\n"
+        printf "${YELLOW}\033[1mvmess://$(echo "{ \"v\": \"2\", \"ps\": \"${USERNAME}-${subdomain}\", \"add\": \"$CFIP\", \"port\": \"$CFPORT\", \"id\": \"$UUID\", \"aid\": \"0\", \"scy\": \"none\", \"net\": \"ws\", \"type\": \"none\", \"host\": \"$argodomain\", \"path\": \"/vmess?ed=2048\", \"tls\": \"tls\", \"sni\": \"$argodomain\", \"alpn\": \"\", \"fp\": \"\"}" | base64 -w0)${RESET}\n"
     fi
 fi)
 
@@ -1928,7 +1929,7 @@ menu() {
    echo ""
    magenta "=== 欢迎使用SERV00和CT8|SING-BOX一键安装脚本 ==="
    echo ""
-    bold_italic_orange "\033[1;3m=== 脚本支持:VLESS VMESS HY2 TUIC socks5 协议，UUID自动生成 ===\033[0m"
+    bold_italic_orange "\033[1;3m=== 脚本支持:VLESS VMESS HY2 TUIC socks5 协议，UUID 自动生成 ===\033[0m"
     magenta "=== 支持安装：单，双，三个协议(面板最多只能开放3个端口)，自由选择 ==="
     bold_italic_light_blue "=== 固定argo隧道 可以优选ip或优选域名！  ==="
     bold_italic_light_blue "=== argo隧道配置文件生成网址  https://fscarmen.cloudflare.now.cc/ ==="
